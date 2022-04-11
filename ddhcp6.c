@@ -485,9 +485,8 @@ void ddsolicit_callback(u_char *user, const struct pcap_pkthdr *h,
     cr -= cl;
   }
 
-  if (fcid && fsid && fiana) {
+  if (fcid && fsid && fiana)
     ddselect_flag = 1;
-  }
 }
 
 /* find dhcp server and initialize dhcp delimit parameters */
@@ -630,6 +629,8 @@ int ddrebind(uint64_t rid) {
   return ddrebind_flag;
 }
 
+uint64_t llid, luid, ulid, uuid;
+
 /* check dhcpprefix+cid is allocatable, via both ddrebind and ddnd */
 int rebind_check(uint64_t cid) {
   if (verbose)
@@ -655,11 +656,9 @@ int rebind_check(uint64_t cid) {
   return 0;
 }
 
-/* binary search lower/upper boundary of dhcp server address pool */
+/* binary search lower/upper limit of dhcp server address pool */
 
-uint64_t llid, luid, ulid, uuid;
-
-uint64_t rebind_find_lower_boundary() {
+uint64_t rebind_find_lower_limit() {
   uint64_t h = (llid >> 1) + (luid >> 1);
   if ((llid & 1) && (luid & 1))
     h++;
@@ -669,10 +668,10 @@ uint64_t rebind_find_lower_boundary() {
     luid = h;
   else
     llid = h;
-  return rebind_find_lower_boundary();
+  return rebind_find_lower_limit();
 }
 
-uint64_t rebind_find_upper_boundary() {
+uint64_t rebind_find_upper_limit() {
   uint64_t h = (ulid >> 1) + (uuid >> 1);
   if ((ulid & 1) && (uuid & 1))
     h++;
@@ -682,31 +681,43 @@ uint64_t rebind_find_upper_boundary() {
     ulid = h;
   else
     uuid = h;
-  return rebind_find_upper_boundary();
+  return rebind_find_upper_limit();
 }
 
 /* repeat solicit address, find the min and the max */
+void solicit_find_limit(int n) {
+  uint64_t delta;
 
-uint64_t lid, uid;
-
-void solicit_find_boundary(int n) {
-  while (n-- > 0) {
+  if (!n)
+    return;
+  for (int i = 0; i < n; i++) {
     if (!ddsolicit(0)) {
       if (verbose)
-        printf("lid: %lx, uid: %lx, solicit failed\n", lid, uid);
+        printf("lid: %lx, uid: %lx, solicit failed\n", luid, ulid);
       continue;
     }
-    if (dhcpaid < lid)
-      lid = dhcpaid;
-    if (dhcpaid > uid)
-      uid = dhcpaid;
+    if (dhcpaid < luid)
+      luid = dhcpaid;
+    if (dhcpaid > ulid)
+      ulid = dhcpaid;
     if (verbose)
-      printf("lid: %lx, uid: %lx, solicited: %lx\n", lid, uid, dhcpaid);
+      printf("lid: %lx, uid: %lx, solicited: %lx\n", luid, ulid, dhcpaid);
   }
+  delta = 2 * (ulid - luid) / n;
+  if (delta > luid)
+    llid = 0;
+  else
+    llid -= delta;
+  if (delta > 0xffffffffffffffff - ulid)
+    uuid = 0xffffffffffffffff;
+  else
+    uuid += delta;
 }
 
 void ddprint_dhcp6() {
+  solicited = 0;
   ddsolicit(1);
+  solicited = 1;
 
   if (!inet_ntop(AF_INET6, dhcpip.s6_addr, ntopbuf, INET6_ADDRSTRLEN)) {
     perror("inet_ntop failed");
@@ -731,19 +742,21 @@ void ddprint_dhcp6() {
   case solicit_once:
     break;
   case solicit:
-    lid = uid = dhcpaid;
-    solicit_find_boundary(solicit_count);
-    printf("DHCP lower boundary: %lx\n", lid);
-    printf("DHCP upper boundary: %lx\n", uid);
-    printf("DHCP boundary probe: %lf\n",
+    luid = ulid = dhcpaid;
+    solicit_find_limit(solicit_count);
+    printf("DHCP fake lower limit: %lx\n", luid);
+    printf("DHCP fake upper limit: %lx\n", ulid);
+    printf("DHCP fake limit probe: %lf\n",
            (double)(solicit_count - 1) / (solicit_count + 1));
+    printf("DHCP lower limit: %lx\n", llid);
+    printf("DHCP upper limit: %lx\n", uuid);
     break;
   case rebind:
     llid = 0;
     luid = ulid = dhcpaid;
     uuid = 0xffffffffffffffff;
-    printf("DHCP lower boundary: %lx\n", rebind_find_lower_boundary());
-    printf("DHCP upper boundary: %lx\n", rebind_find_upper_boundary());
+    printf("DHCP lower limit: %lx\n", rebind_find_lower_limit());
+    printf("DHCP upper limit: %lx\n", rebind_find_upper_limit());
     break;
   }
 }

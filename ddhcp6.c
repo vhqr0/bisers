@@ -39,7 +39,7 @@ void help() {
 }
 
 const char *iface = NULL, *addr = NULL;
-int verbose = 1, timeout = 100, count = 1, solicit_count = 200;
+int verbose = 0, timeout = 100, count = 1, solicit_count = 200;
 enum { rebind, solicit, solicit_once } mode = solicit_once;
 char errbuf[PCAP_ERRBUF_SIZE] = {0}, ntopbuf[INET6_ADDRSTRLEN];
 
@@ -700,9 +700,8 @@ void solicit_find_boundary(int n) {
       lid = dhcpaid;
     if (dhcpaid > uid)
       uid = dhcpaid;
-    if (verbose) {
+    if (verbose)
       printf("lid: %lx, uid: %lx, solicited: %lx\n", lid, uid, dhcpaid);
-    }
   }
 }
 

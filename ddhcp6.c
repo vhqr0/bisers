@@ -34,7 +34,7 @@ void help() {
   puts("-t, --timeout       specified timeout, default to 100 (ms)");
   puts("-c, --count         specified delimit times, default to 1");
   puts("-r, --rebind        delimit by rebind");
-  puts("-s, --solicit       delimit by solicit, default deeps to 200");
+  puts("-s, --solicit       delimit by solicit, default count to 200");
   puts("-n, --no-delimit    no delimit, just solicit once (default)");
 }
 
@@ -444,7 +444,6 @@ void ddsolicit_callback(u_char *user, const struct pcap_pkthdr *h,
         if (solicited) {
           if (cl != sduidlen || memcmp(c, sduid, sduidlen))
             return;
-          fsid = 1;
         } else {
           if (cl > DUID_MAX_LEN)
             return;
@@ -496,14 +495,16 @@ int ddsolicit(int required) {
   uint64_t id = 0x10002;
   struct udphdr *udphdr = (struct udphdr *)buf;
 
-  memset(cduid, 0, DUID_MAX_LEN);
-  memset(sduid, 0, DUID_MAX_LEN);
-  cduid[1] = 1; /* client id */
-  cduid[3] = 10;
-  cduid[5] = 3;
-  cduid[7] = 1;
-  memcpy(cduid + 8, ethhdr->h_source, 6);
-  cduidlen = 14;
+  if (!solicited) {
+    memset(sduid, 0, DUID_MAX_LEN);
+    memset(cduid, 0, DUID_MAX_LEN);
+    cduid[1] = 1; /* client id */
+    cduid[3] = 10;
+    cduid[5] = 3;
+    cduid[7] = 1;
+    memcpy(cduid + 8, ethhdr->h_source, 6);
+    cduidlen = 14;
+  }
 
   memset(buf, 0, cap);
   udphdr->source = htons(546);
@@ -685,7 +686,7 @@ uint64_t rebind_find_upper_limit() {
 }
 
 /* repeat solicit address, find the min and the max */
-void solicit_find_limit(int n) {
+void solicit_delimit(int n) {
   uint64_t delta;
 
   if (!n)
@@ -703,15 +704,15 @@ void solicit_find_limit(int n) {
     if (verbose)
       printf("lid: %lx, uid: %lx, solicited: %lx\n", luid, ulid, dhcpaid);
   }
-  delta = 2 * (ulid - luid) / n;
+  delta = (ulid - luid) / n;
   if (delta > luid)
     llid = 0;
   else
-    llid -= delta;
+    llid = luid - delta;
   if (delta > 0xffffffffffffffff - ulid)
     uuid = 0xffffffffffffffff;
   else
-    uuid += delta;
+    uuid = ulid + delta;
 }
 
 void ddprint_dhcp6() {
@@ -743,7 +744,7 @@ void ddprint_dhcp6() {
     break;
   case solicit:
     luid = ulid = dhcpaid;
-    solicit_find_limit(solicit_count);
+    solicit_delimit(solicit_count);
     printf("DHCP fake lower limit: %lx\n", luid);
     printf("DHCP fake upper limit: %lx\n", ulid);
     printf("DHCP fake limit probe: %lf\n",

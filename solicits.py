@@ -31,6 +31,7 @@ def prn(pkt):
     if dhcp6.DHCP6OptIAAddress in pkt:
         print(pkt[dhcp6.DHCP6OptIAAddress].addr)
 
+
 t = threading.Thread(target=send_solicits)
 t.start()
 

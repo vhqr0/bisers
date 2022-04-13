@@ -1,3 +1,19 @@
+# 摘要
+
+DHCPv6定界算法及其在IPv6网络扫描中的应用
+
+本文提出了两个DHCPv6定界算法，对目前主流的DHCPv6服务端实现都可以在几秒
+钟内准确地探测其地址池。DHCPv6定界可以直接帮助IPv6网络扫描，也可能有更
+多应用。
+
+DHCPv6 Delimitation Algorithm and Its Application in IPv6 Network Scanning
+
+This paper proposes two DHCPv6 delimiting algorithms, which can
+accurately detect the address pool within a few seconds for the
+current mainstream DHCPv6 server implementations. DHCPv6 delimitation
+can directly help IPv6 network scanning, and may have more
+applications.
+
 # 引言
 
 扫描网络中存活的主机是资产管理与渗透测试的一个重要组成部分。IPv4看似庞
@@ -11,26 +27,24 @@
 
 关于扫描IPv6网络的研究主要有两类分支：基于机器学习的IPv6扫描方法和基于
 某种网络协议的IPv6扫描方法：前者通过学习IPv6地址分配规律找到一个地址存
-活率更高的可扫描的子空间，最早在Entropy/IP[ref: Entropy/IP]中被提出，
-并且更有效的模型也被不断提出[ref: ...]。这种方法的优点是远程到本地的扫
-描一个IPv6网络，理论上可以用IPv6公共网络中的任意一个节点扫描任意一个子
-网。但缺点是需要找到一组合适的训练来集训练模型，且扫描效果并不理想；后
-者利用某些网络协议收集地址信息，通常要满足某些前提条件：在要扫描的网络
-中的特定位置，网络中的IPv6节点要使用或支持某些协议或者其使用的协议实现
-中存在某些问题。虽然这种地址扫描方式的条件苛刻，不普遍适用，但在特定场
-景下效果出色，且能获得丰富的额外信息。
+活率更高的可扫描的子空间，最早在Entropy/IP[ref: entropyip]中被提出，并
+且更有效的模型也被不断提出[ref: 6tree, 6gan]。这种方法的优点是远程到本
+地的扫描一个IPv6网络，理论上可以用IPv6公共网络中的任意一个节点扫描任意
+一个子网。但缺点是需要找到一组合适的训练来集训练模型，且扫描效果并不理
+想；后者利用某些网络协议收集地址信息，通常要满足某些前提条件：在要扫描
+的网络中的特定位置，网络中的IPv6节点要使用或支持某些协议或者其使用的协
+议实现中存在某些问题。虽然这种地址扫描方式的条件苛刻，不普遍适用，但在
+特定场景下效果出色，且能获得丰富的额外信息。
 
 基于某种网络协议的IPv6扫描方法又分为两类：被动扫描和主动扫描： 被动扫
 描通过被动地嗅探网络中的流量收集地址信息，一个典型例子是基于
 DAD（Duplicated Address Detact）重复地址检测机制的IPv6扫描方法。无论是
 手动配置还是自动配置，一个IPv6地址生效前都要进行DAD，通过多播NS报文检
 测一个地址是否被占用。该扫描方法通过嗅探DAD的NS报文来收集局域网中的链
-路本地地址与全局单播地址信息。此外，嗅探mDNS报文[ref: ...]或在用SNMP管
-理的网络中嗅探SNMP报文[ref: ...]也是有效的IPv6被动扫描方法；主动扫描通
-过主动地发送一些报文，然后收集这些报文引发的响应报文收集地址信息，一个
-典型的例子是多播ICMPv6 EchoRequest报文，然后收集响应该报文的节点的地址。
-此外，查询本地域名服务器中的本地域名记录[ref: ...]也是一种有效的主动扫
-描方法。
+路本地地址与全局单播地址信息。此外，嗅探mDNS报文或在用SNMP管理的网络中
+嗅探SNMP报文也是有效的IPv6被动扫描方法；主动扫描通过主动地发送一些报文，
+然后收集这些报文引发的响应报文收集地址信息，一个典型的例子是多播ICMPv6
+EchoRequest报文，然后收集响应该报文的节点的地址。
 
 本研究尝试利用IPv6的DHCP协议：DHCPv6协议实现IPv6扫描，具体思想是针对某
 些配置了小到可以扫描的地址池的DHCPv6服务器，先快速确定其地址池边界，然
@@ -49,7 +63,7 @@ DHCPv6客户端、中继发送给服务端的报文是多播的，一个DHCPv6�
 方法更稳定：按照约定，DHCPv6客户端要在T1时间内续租地址，即活跃的IPv6节
 点在T1时间内必定发送Request、Renew、Confirm中的一个报文，攻击者可以先
 检查服务端声明的T1字段，然后可以期望在数小时内收集到网络中所有的IPv6资
-产信息。更多可以参考Stephen等人的工作[ref: what dhcpv6 says about you]。
+产信息。更多可以参考Stephen等人的工作[ref: dhcpv6sniff]。
 
 基于DHCPv6的被动扫描效果拔群，但也有弱点：有些DHCPv6客户端实现默认的T1
 值长达数天，其它实现也支持网络管理员设置一个很大的T1值来增长网络嗅探的
@@ -57,12 +71,12 @@ DHCPv6客户端、中继发送给服务端的报文是多播的，一个DHCPv6�
 处理，不向非信任端口转发DHCPv6请求报文来避免这种隐私缺陷。因此，有必要
 探索针对DHCPv6的主动扫描方法。
 
-关于针对DHCPv6的主动扫描，Erik等人提出了一种另辟蹊径的方法[ref:
-finding a needle in a haystack]。这种方法基于部分DHCPv6服务端实现未经
-仔细的安全考虑便沿用DHCPv4的实现使用线性分配地址，Erik等人提出了一种针
-对这种实现的二分搜索方法。在测试过常见的DHCPv6服务端实现后，我们发现，
-虽然现在中国市场上常见的家用路由器实现都使用线性分配地址，但是几个主流
-的商用路由器实现和主要的软件实现都使用更安全的随机分配地址。
+关于针对DHCPv6的主动扫描，Bergenholtz等人提出了一种方法DeHCP[ref:
+dehcp]：这种方法基于部分DHCPv6服务端实现未经仔细的安全考虑便沿用DHCPv4
+的实现使用线性分配地址，使用二分搜索算法扫描密集的地址空间。在测试过常
+见的DHCPv6服务端实现后，我们发现，虽然现在中国市场上常见的家用路由器实
+现都使用线性分配地址，但是几个主流的商用路由器实现和主要的软件实现都使
+用更安全的随机分配地址。
 
 尽管RFC3315中并未明确说明，但几乎所有的使用随机分配地址的DHCPv6服务端
 实现都采用地址池机制。假设我们找到一种方法可以快速探测DHCPv6服务器的地
@@ -113,7 +127,7 @@ DHCPv6服务端会认为这个地址不符合其地址分配策略，与处理�
 过128个点碰撞到这些漏点的概率很低，而且可以通过多次探测避免漏点碰撞。
 我们还发现，改进后的算法扫描线性分配地址的DHCPv6服务端实现同样有效，因
 为用Rebind向这些服务端请求任何地址都不符合其规范，最终会通过邻居发现协
-议探活，回退到了Erik等人提出的DeHCP算法。
+议探活，回退到了DeHCP算法。
 
 ```python
 def delimit(l, u):
@@ -232,3 +246,11 @@ def delimit(l, u, n):
 基于Solicit的DHCPv6定界方法对使用符合其它的概率分布模型的地址生成方式
 的DHCPv6服务端实现的有效性以及可能带来的安全隐患还可以做进一步研究；此
 外，关于DHCPv6定界在网络扫描之外的应用也有待研究。
+
+# 参考文献
+
+entropyip: P. Foremski, D. Plonka, A. Berger, Entropy/IP: Uncovering structure in IPv6 addresses // Proceedings of the Internet Measurement Conference (IMC), Santa Monica, USA, 2016: 167-181
+6tree: Liu Zhizhu, Xiong Yinqiao, Liu Xin, Xie Wei, Zhu Peidong, 6Tree: Efficient dynamic discovery of active addresses in the IPv6 address space. Computer Networks, 2019, 155: 31-46
+6gan: Cui Tianyu, Gou Gaopeng, Xiong Gang, Liu Chang, Fu Peipei, Li Zhen, 6GAN: IPv6 Multi-Pattern Target Generation via Generative Adversarial Nets with Reinforcement Learning // Proceedings of the Ieee Conference on Computer Communications, New York, USA, 2021
+dhcpv6sniff: S. Groat, M. Dunlop, R. Marchany, J. Tront, What DHCPv6 says about you // Proceedings of the World Congress on Internet Security (WorldCIS), London, UK, 2011: 146-151
+dehcp: E. Bergenholtz, A. Moss, D. Ilie, E. Casalicchio, Finding a needle in a haystack: A comparative study of IPv6 scanning methods // Proceedings of the International Symposium on Networks, Computers and Communications (ISNCC), New York, USA, 2019

@@ -40,4 +40,7 @@ with open(in_file) as f:
         for addr in addrs:
             if l <= addr <= u:
                 hit += 1
-        print(f'{hit/len(addrs)}\t{(abs(l-lower_limit)+abs(u-upper_limit))/(upper_limit-lower_limit)}')
+        prob1 = hit / len(addrs)
+        prob2 = (abs(l - lower_limit) + abs(u - upper_limit)) / \
+            (upper_limit - lower_limit)
+        print(f'{prob1:.3}\t{prob2:.3}')

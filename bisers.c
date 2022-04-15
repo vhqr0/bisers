@@ -41,7 +41,7 @@ void help() {
   puts("-n, --no-delimit    no delimit, just solicit once");
 }
 
-const char *iface = NULL, *addr = NULL;
+const char *iface = NULL;
 int verbose = 0, timeout = 100, window = 3, count = 128;
 enum { d_mode, r_mode, s_mode, a_mode, n_mode } mode = a_mode;
 char errbuf[PCAP_ERRBUF_SIZE] = {0}, ntopbuf[INET6_ADDRSTRLEN];

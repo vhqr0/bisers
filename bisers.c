@@ -26,21 +26,24 @@
 #include <pcap.h>
 
 void help() {
-  puts("Usage: ddhcp6 [-i INTERFACE] [-v] [-t TIMEOUT] [-c COUNT]");
-  puts("              {-h | -r | -s[COUNT] | -n}");
-  puts("-h, --help          show this  message");
+  puts("Usage: bisers [-i INTERFACE] [-v] [-t TIMEOUT] [-w WINDOW] [-c COUNT]");
+  puts("              {-h | -d | -r | -s | -n}");
+  puts("-h, --help          show this message");
   puts("-i, --interface     specified interface, default via pcap");
   puts("-v, --verbose       specified debuginfo during delimit");
   puts("-t, --timeout       specified timeout, default to 100 (ms)");
-  puts("-c, --count         specified delimit times, default to 1");
+  puts("-w, --window        specified dehcp window, defualt to 3");
+  puts("-c, --count         specified solicit count, default to 128");
+  puts("-d, --dehcp         delimit by dehcp");
   puts("-r, --rebind        delimit by rebind");
-  puts("-s, --solicit       delimit by solicit, default count to 200");
-  puts("-n, --no-delimit    no delimit, just solicit once (default)");
+  puts("-s, --solicit       delimit by solicit");
+  puts("-a, --auto          auto select delimit method (default)");
+  puts("-n, --no-delimit    no delimit, just solicit once");
 }
 
 const char *iface = NULL, *addr = NULL;
-int verbose = 0, timeout = 100, count = 1, solicit_count = 200;
-enum { rebind, solicit, solicit_once } mode = solicit_once;
+int verbose = 0, timeout = 100, window = 3, count = 128;
+enum { d_mode, r_mode, s_mode, a_mode, n_mode } mode = a_mode;
 char errbuf[PCAP_ERRBUF_SIZE] = {0}, ntopbuf[INET6_ADDRSTRLEN];
 
 void parseargs(int argc, char **argv) {
@@ -50,12 +53,14 @@ void parseargs(int argc, char **argv) {
                              {"interface", required_argument, NULL, 'i'},
                              {"verbose", no_argument, NULL, 'v'},
                              {"timeout", required_argument, NULL, 't'},
+                             {"window", required_argument, NULL, 'w'},
                              {"count", required_argument, NULL, 'c'},
+                             {"dehcp", no_argument, NULL, 'd'},
                              {"rebind", no_argument, NULL, 'r'},
-                             {"solicit", optional_argument, NULL, 's'},
+                             {"solicit", no_argument, NULL, 's'},
                              {"no-delimit", no_argument, NULL, 'n'}};
 
-  while ((opt = getopt_long(argc, argv, "hi:vt:c:rs::n", options, &optind)) >
+  while ((opt = getopt_long(argc, argv, "hi:vt:w:c:drsan", options, &optind)) >
          0) {
     switch (opt) {
     case 'h':
@@ -70,19 +75,26 @@ void parseargs(int argc, char **argv) {
     case 't':
       timeout = atoi(optarg);
       break;
+    case 'w':
+      window = atoi(optarg);
+      break;
     case 'c':
       count = atoi(optarg);
       break;
+    case 'd':
+      mode = d_mode;
+      break;
     case 'r':
-      mode = rebind;
+      mode = r_mode;
       break;
     case 's':
-      mode = solicit;
-      if (optarg)
-        solicit_count = atoi(optarg);
+      mode = s_mode;
+      break;
+    case 'a':
+      mode = a_mode;
       break;
     case 'n':
-      mode = solicit_once;
+      mode = n_mode;
       break;
     default:
       fprintf(stderr, "unknown option: %c\n", opt);
@@ -122,11 +134,35 @@ uint8_t *pkt = NULL, *buf = NULL;
 struct ethhdr *ethhdr = NULL;
 struct ip6_hdr *ip6hdr = NULL;
 
-void ddsend_init() {
+#define NXT_UDP 0x11
+#define NXT_ICMP6 0x3a
+
+void icmp6cksum();
+void udpcksum();
+
+/* pcap:         pcap capture handler
+ * pfd:          pcap handler selectable fd
+ * nafilter:     pcap filter for neighbor advertise
+ * dhcpfilter:   pcap filter for dhcp reply
+ * sr_flag:      flag should be set by cb to break select loop
+ */
+
+#define NAFILTER "icmp6[icmp6type]==icmp6-neighboradvert"
+#define DHCPFILTER "ip6 and udp src port 547 and udp dst port 546"
+
+pcap_t *pcap = NULL;
+int pfd;
+struct bpf_program nafilter, dhcpfilter;
+
+int sr_flag = 0;
+
+void sr_init() {
   struct ifreq ifr;
 
+  /* init ifr */
   memset(&ifr, 0, sizeof(ifr));
   strncpy(ifr.ifr_name, iface, IFNAMSIZ);
+  /* init sockfd */
   if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
     perror("socket failed");
     exit(-1);
@@ -135,12 +171,14 @@ void ddsend_init() {
     perror("ioctl SIOCGIFINDEX failed");
     exit(-1);
   }
+  /* init sall */
   memset(&sall, 0, sizeof(sall));
   sall.sll_ifindex = ifr.ifr_ifindex;
   if (ioctl(sockfd, SIOCGIFMTU, &ifr, sizeof(ifr)) < 0) {
     perror("ioctl SIOCGIFMTU failed");
     exit(-1);
   }
+  /* init pkt */
   mtu = ifr.ifr_mtu;
   if (mtu < 1280) {
     fprintf(stderr, "interface mtu too small: %d\n", mtu);
@@ -148,17 +186,20 @@ void ddsend_init() {
   }
   pkt = (uint8_t *)malloc(mtu);
   memset(pkt, 0, mtu);
+  /* init pkt pointers */
   ethhdr = (struct ethhdr *)pkt;
   ip6hdr = (struct ip6_hdr *)(pkt + sizeof(struct ethhdr));
   buf = pkt + HDRSIZE;
   cap = mtu - HDRSIZE;
   cur = 0;
+  /* init pkt eth fields */
   if (ioctl(sockfd, SIOCGIFHWADDR, &ifr, sizeof(ifr)) < 0) {
     perror("ioctl SIOCGIFHWADDR failed");
     exit(-1);
   }
   memcpy(ethhdr->h_source, ifr.ifr_hwaddr.sa_data, 6);
   ethhdr->h_proto = htons(ETH_P_IPV6);
+  /* init pkt ip6 fields */
   ip6hdr->ip6_src.s6_addr[0] = 0xfe;
   ip6hdr->ip6_src.s6_addr[1] = 0x80;
   memcpy(ip6hdr->ip6_src.s6_addr + 8, ethhdr->h_source, 3);
@@ -168,48 +209,98 @@ void ddsend_init() {
   memcpy(ip6hdr->ip6_src.s6_addr + 13, ethhdr->h_source + 3, 3);
   ip6hdr->ip6_vfc = 0x60;
   ip6hdr->ip6_hlim = 0xff;
+  /* init pcap */
+  if (!(pcap = pcap_open_live(iface, mtu, 0, -1, errbuf))) {
+    fprintf(stderr, "pcap_open_live failed: %s\n", errbuf);
+    exit(-1);
+  }
+  if (*errbuf)
+    fprintf(stderr, "pcap_open_live warnning: %s\n", errbuf);
+  if (pcap_setnonblock(pcap, 1, errbuf) == PCAP_ERROR) {
+    fprintf(stderr, "pcap_setnonblock failed: %s\n", errbuf);
+    exit(-1);
+  }
+  /* init pfd */
+  if ((pfd = pcap_get_selectable_fd(pcap)) == PCAP_ERROR) {
+    pcap_perror(pcap, "pcap_get_selectable_fd failed");
+    exit(-1);
+  }
+  /* init filters */
+  if (pcap_compile(pcap, &nafilter, NAFILTER, 1, 0) == PCAP_ERROR) {
+    pcap_perror(pcap, "pcap_compile failed");
+    exit(-1);
+  }
+  if (pcap_compile(pcap, &dhcpfilter, DHCPFILTER, 1, 0) == PCAP_ERROR) {
+    pcap_perror(pcap, "pcap_compile failed");
+    exit(-1);
+  }
 }
 
-/* send pkt
- * target mac:     mac
- * target ip:      prefix+id
- * payload length: cur
- * next header:    nxt
- * payload:        buf
+/* set filter, send pkt, capture and cb until sr_flag is
+ * set or timeout
+ *
+ * target mac:      mac
+ * target ip:       prefix+id
+ * next header:     nxt
+ * payload length:  cur
+ * payload:         buf
  */
+void sr(uint64_t mac, uint64_t prefix, uint64_t id, uint8_t nxt,
+        struct bpf_program *filter, pcap_handler cb) {
+  fd_set rfds;
+  struct timeval tv;
 
-#define NXT_UDP 0x11
-#define NXT_ICMP 0x3a
-
-void ddicmp6cksum();
-void ddudpcksum();
-
-void ddsend(uint64_t mac, uint64_t prefix, uint64_t id, uint8_t nxt) {
+  /* set pcap filter */
+  if (pcap_setfilter(pcap, filter) == PCAP_ERROR) {
+    pcap_perror(pcap, "pcap_setfilter failed");
+    exit(-1);
+  }
+  /* set pkt fields */
   mac = htobe64(mac);
   memcpy(ethhdr->h_dest, ((uint8_t *)&mac) + 2, 6);
   ((uint64_t *)&ip6hdr->ip6_dst.s6_addr)[0] = htobe64(prefix);
   ((uint64_t *)&ip6hdr->ip6_dst.s6_addr)[1] = htobe64(id);
   ip6hdr->ip6_plen = htons(cur);
   ip6hdr->ip6_nxt = nxt;
+  /* set cksum maybe */
   switch (nxt) {
-  case NXT_ICMP:
-    ddicmp6cksum();
+  case NXT_ICMP6:
+    icmp6cksum();
     break;
   case NXT_UDP:
-    ddudpcksum();
+    udpcksum();
     break;
   }
+  /* send pkt */
   if (sendto(sockfd, pkt, cur + HDRSIZE, 0, (struct sockaddr *)&sall,
              sizeof(sall)) < 0) {
     perror("send failed");
     exit(-1);
+  }
+  /* init select */
+  sr_flag = 0;
+  tv.tv_sec = 0;
+  tv.tv_usec = timeout << 10;
+  /* select */
+  while (!sr_flag && (tv.tv_usec || tv.tv_sec)) {
+    FD_ZERO(&rfds);
+    FD_SET(pfd, &rfds);
+    switch (select(pfd + 1, &rfds, NULL, NULL, &tv)) {
+    case 1:
+      pcap_dispatch(pcap, 1, cb, NULL);
+      break;
+    case -1:
+      perror("select failed");
+      exit(-1);
+      break;
+    }
   }
 }
 
 /* udp checksum
  * ip6 src || ip6 udp || nxt(2) || plen(2) || buf
  */
-void ddudpcksum() {
+void udpcksum() {
   uint32_t sum = 0;
   uint16_t *p = (uint16_t *)buf;
   int c = cur;
@@ -238,7 +329,7 @@ void ddudpcksum() {
 /* icmpv6 checksum
  * buf || ip6 src || ip6 dst || plen(4) || nxt(4)
  */
-void ddicmp6cksum() {
+void icmp6cksum() {
   uint32_t sum = 0;
   uint16_t *p = (uint16_t *)buf;
   int c = cur + 40;
@@ -247,7 +338,7 @@ void ddicmp6cksum() {
   memcpy(buf + cur + 16, ip6hdr->ip6_dst.s6_addr, 16);
   buf[cur + 34] = cur >> 8;
   buf[cur + 35] = cur;
-  buf[cur + 39] = NXT_ICMP;
+  buf[cur + 39] = NXT_ICMP6;
 
   while (c > 1) {
     sum += ntohs(*p++);
@@ -263,97 +354,26 @@ void ddicmp6cksum() {
   ((struct icmp6_hdr *)buf)->icmp6_cksum = htons(~sum);
 }
 
-/* pcap:           pcap capture handler
- * pfd:            pcap handler selectable fd
- * ddselect_flag:  flag should be set by callback to break select loop
- * nafilter:       pcap filter for neighbor advertise
- * dhcpfilter:     pcap filter for dhcp reply
+/* nd send neighbor solicit, and set nd_id to discovery id, nd_cb
+ * check the neighbor advertise and set sr_flag to 1.
  */
 
-#define NAFILTER "icmp6[icmp6type]==icmp6-neighboradvert"
-#define DHCPFILTER "ip6 and udp src port 547 and udp dst port 546"
+uint64_t nd_id;
 
-pcap_t *pcap = NULL;
-int pfd, ddselect_flag = 0;
-struct bpf_program nafilter, dhcpfilter;
-
-void ddselect_init() {
-  if (!(pcap = pcap_open_live(iface, mtu, 0, -1, errbuf))) {
-    fprintf(stderr, "pcap_open_live failed: %s\n", errbuf);
-    exit(-1);
-  }
-  if (*errbuf)
-    fprintf(stderr, "pcap_open_live warnning: %s\n", errbuf);
-  if (pcap_setnonblock(pcap, 1, errbuf) == PCAP_ERROR) {
-    fprintf(stderr, "pcap_setnonblock failed: %s\n", errbuf);
-    exit(-1);
-  }
-  if ((pfd = pcap_get_selectable_fd(pcap)) == PCAP_ERROR) {
-    pcap_perror(pcap, "pcap_get_selectable_fd failed");
-    exit(-1);
-  }
-  if (pcap_compile(pcap, &nafilter, NAFILTER, 1, 0) == PCAP_ERROR) {
-    pcap_perror(pcap, "pcap_compile failed");
-    exit(-1);
-  }
-  if (pcap_compile(pcap, &dhcpfilter, DHCPFILTER, 1, 0) == PCAP_ERROR) {
-    pcap_perror(pcap, "pcap_compile failed");
-    exit(-1);
-  }
-}
-
-void ddselect_set_filter(struct bpf_program *filter) {
-  if (pcap_setfilter(pcap, filter) == PCAP_ERROR) {
-    pcap_perror(pcap, "pcap_setfilter failed");
-    exit(-1);
-  }
-}
-
-/* pcap capture with callback until ddselect_flag is set or timeout */
-void ddselect(pcap_handler callback) {
-  fd_set rfds;
-  struct timeval tv;
-
-  ddselect_flag = 0;
-  tv.tv_sec = 0;
-  tv.tv_usec = timeout << 10;
-
-  while (!ddselect_flag && (tv.tv_usec || tv.tv_sec)) {
-    FD_ZERO(&rfds);
-    FD_SET(pfd, &rfds);
-    switch (select(pfd + 1, &rfds, NULL, NULL, &tv)) {
-    case 1:
-      pcap_dispatch(pcap, 1, callback, NULL);
-      break;
-    case -1:
-      perror("select failed");
-      exit(-1);
-      break;
-    }
-  }
-}
-
-/* ddnd send neighbor solicit, and set ddnd_id to discovery id,
- * ddnd_callback check the neighbor advertise and set ddselect_flag to 1.
- */
-
-uint64_t ddnd_id;
-
-void ddnd_callback(u_char *user, const struct pcap_pkthdr *h,
-                   const u_char *bytes) {
+void nd_cb(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes) {
   struct ip6_hdr *ip6hdr = (struct ip6_hdr *)(bytes + sizeof(struct ethhdr));
   struct nd_neighbor_advert *nahdr =
       (struct nd_neighbor_advert *)(bytes + HDRSIZE);
 
   if (h->caplen < HDRSIZE + sizeof(struct nd_neighbor_advert) ||
-      be64toh(*((uint64_t *)(nahdr->nd_na_target.s6_addr + 8))) != ddnd_id)
+      be64toh(*((uint64_t *)(nahdr->nd_na_target.s6_addr + 8))) != nd_id)
     return;
 
-  ddselect_flag = 1;
+  sr_flag = 1;
 }
 
-/* alive check via neighbor discovery, discovery address: dprefix + did */
-int ddnd(uint64_t dprefix, uint64_t did) {
+/* alive check via neighbor discovery, discovery address: dprefix+did */
+int nd(uint64_t dprefix, uint64_t did) {
   uint64_t mac = 0x3333ff000000 + (did & 0xffffff);
   uint64_t prefix = 0xff02000000000000;
   uint64_t id = 0x1ff000000 + (did & 0xffffff);
@@ -368,20 +388,18 @@ int ddnd(uint64_t dprefix, uint64_t did) {
   buf[cur++] = 1;
   memcpy(buf + cur, ethhdr->h_source, 6);
   cur += 6;
-  ddnd_id = did;
-  ddselect_set_filter(&nafilter);
-  ddsend(mac, prefix, id, NXT_ICMP);
-  ddselect(ddnd_callback);
-  return ddselect_flag;
+  nd_id = did;
+  sr(mac, prefix, id, NXT_ICMP6, &nafilter, nd_cb);
+  return sr_flag;
 }
 
-/* dhcp_cache:   cache for allocated addr
- * cduid:        client id option
- * sduid:        server id option
- * trid, iaid:   dhcp solicit/rebind id
- * dhcpip:       dhcp server address
- * dhcpaip:      dhcp allocated address, dhcpprefix + dhcpaid
- * solicited:    if have solicited, we want track the same server
+/* dhcp_cache:       cache for allocated addr
+ * cduid:            client id option
+ * sduid:            server id option
+ * trid, iaid:       dhcp solicit/rebind id
+ * dhcpip:           dhcp server address
+ * dhcpaip:          dhcp allocated address, dhcpprefix+dhcpaid
+ * solicited_flag:   if have solicited, we want track the same server
  */
 
 #define DHCP_CACHE_SIZE 128
@@ -397,17 +415,17 @@ struct in6_addr dhcpip, dhcpaip;
 uint64_t dhcpprefix, dhcpaid;
 uint32_t dhcpt1, dhcpt2, dhcppreferedtime, dhcpvalidtime;
 
-int solicited = 0;
+int solicited_flag = 0;
 
 /* check dhcp advertise and set dhcp delimit parameters.  cduid is
- * initialized by ddsolicit, trid/iaid is randomized generated every
- * time call ddsolicit and ddrebind.  ddsolicit_callback check
- * serverid option and set sduid, and, check iana option and set
- * dhcpprefix, t1, t2, validtime and preferedtime.  the solicited
- * address shoud append to dhcp_cache.
+ * initialized by solicit, trid/iaid is randomized generated every
+ * time call solicit and rebind.  solicit_cb check serverid option and
+ * set sduid, and, check iana option and set dhcpprefix, t1, t2,
+ * validtime and preferedtime.  the solicited_flag address shoud append to
+ * dhcp_cache.
  */
-void ddsolicit_callback(u_char *user, const struct pcap_pkthdr *h,
-                        const u_char *bytes) {
+void solicit_cb(u_char *user, const struct pcap_pkthdr *h,
+                const u_char *bytes) {
   struct ip6_hdr *ip6hdr =
       (struct ip6_hdr *)((uint8_t *)bytes + sizeof(struct ethhdr));
   struct udphdr *udphdr = (struct udphdr *)((uint8_t *)bytes + HDRSIZE);
@@ -441,7 +459,7 @@ void ddsolicit_callback(u_char *user, const struct pcap_pkthdr *h,
       if (fsid) {
         return;
       } else {
-        if (solicited) {
+        if (solicited_flag) {
           if (cl != sduidlen || memcmp(c, sduid, sduidlen))
             return;
         } else {
@@ -459,7 +477,7 @@ void ddsolicit_callback(u_char *user, const struct pcap_pkthdr *h,
       } else {
         if (cl < 44 || c[17] != 5 || c[19] != 24) /* check if with iaaddr */
           return;
-        if (solicited) {
+        if (solicited_flag) {
           if (be64toh(*(uint64_t *)(c + 20)) != dhcpprefix)
             return;
           dhcpaid = be64toh(*(uint64_t *)(c + 28));
@@ -485,17 +503,18 @@ void ddsolicit_callback(u_char *user, const struct pcap_pkthdr *h,
   }
 
   if (fcid && fsid && fiana)
-    ddselect_flag = 1;
+    sr_flag = 1;
 }
 
 /* find dhcp server and initialize dhcp delimit parameters */
-int ddsolicit(int required) {
+int solicit(int required, int solicited) {
   uint64_t mac = 0x333300010002;
   uint64_t prefix = 0xff02000000000000;
   uint64_t id = 0x10002;
   struct udphdr *udphdr = (struct udphdr *)buf;
 
-  if (!solicited) {
+  solicited_flag = solicited;
+  if (!solicited_flag) {
     memset(sduid, 0, DUID_MAX_LEN);
     memset(cduid, 0, DUID_MAX_LEN);
     cduid[1] = 1; /* client id */
@@ -532,28 +551,25 @@ int ddsolicit(int required) {
   cur += 8;
 
   udphdr->len = htons(cur);
-  ddselect_set_filter(&dhcpfilter);
-  ddsend(mac, prefix, id, NXT_UDP);
-  ddselect(ddsolicit_callback);
-  if (required && !ddselect_flag) {
+  sr(mac, prefix, id, NXT_UDP, &dhcpfilter, solicit_cb);
+  if (required && !sr_flag) {
     fprintf(stderr, "can't find dhcp server\n");
     exit(-1);
   }
-  return ddselect_flag;
+  return sr_flag;
 }
 
-/* ddrebind send dhcp rebind, and set ddrebind_flag to zero,
- * ddrebind_callback check the dhcp reply iana option,
- * if with one address, just set ddselect_flag and return,
- * if with two addresses, set allocated address to ddrebind_flag and return.
- * ddrebind check both ddselect_flag and ddrebind_flag to draw a result.
+/* rebind send dhcp rebind, and set rebind_flag to zero,
+ * rebind_cb check the dhcp reply iana option,
+ * if with one address, just set sr_flag and return,
+ * if with two addresses, set allocated address to rebind_flag and return.
+ * rebind check both sr_flag and rebind_flag to draw a result.
  * the allocated address should append to dhcp_cache.
  */
 
-int ddrebind_flag;
+int rebind_flag;
 
-void ddrebind_callback(u_char *user, const struct pcap_pkthdr *h,
-                       const u_char *bytes) {
+void rebind_cb(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes) {
   struct ip6_hdr *ip6hdr =
       (struct ip6_hdr *)((uint8_t *)bytes + sizeof(struct ethhdr));
   struct udphdr *udphdr = (struct udphdr *)((uint8_t *)bytes + HDRSIZE);
@@ -574,9 +590,9 @@ void ddrebind_callback(u_char *user, const struct pcap_pkthdr *h,
     if (c[1] == 3) {
       if (cl < 44 | c[17] != 5 || c[19] != 24)
         return;
-      ddselect_flag = 1;
+      sr_flag = 1;
       if (*(uint32_t *)(c + 40)) /* check the first iaaddr's validtime */
-        ddrebind_flag = 1;
+        rebind_flag = 1;
       if (cl >= 72 && c[45] == 5 && c[47] == 24 &&
           dhcp_cache_cur <
               DHCP_CACHE_SIZE) /* check if another iaaddr was allocated */
@@ -589,7 +605,7 @@ void ddrebind_callback(u_char *user, const struct pcap_pkthdr *h,
 }
 
 /* allocatable check via dhcp rebind, rebind address: dhcpprefix+rid */
-int ddrebind(uint64_t rid) {
+int rebind(uint64_t rid) {
   uint64_t mac = 0x333300010002;
   uint64_t prefix = 0xff02000000000000;
   uint64_t id = 0x10002;
@@ -621,33 +637,71 @@ int ddrebind(uint64_t rid) {
   cur += 28;
 
   udphdr->uh_ulen = htons(cur);
-  ddrebind_flag = 0;
-  ddselect_set_filter(&dhcpfilter);
-  ddsend(mac, prefix, id, NXT_UDP);
-  ddselect(ddrebind_callback);
-  if (!ddselect_flag)
+  rebind_flag = 0;
+  sr(mac, prefix, id, NXT_UDP, &dhcpfilter, rebind_cb);
+  if (!sr_flag)
     return 0;
-  return ddrebind_flag;
+  return rebind_flag;
 }
 
-uint64_t llid, luid, ulid, uuid;
+uint64_t llim = 0, ulim = 0;
 
-/* check dhcpprefix+cid is allocatable, via both ddrebind and ddnd */
-int rebind_check(uint64_t cid) {
+uint64_t dflimit(uint64_t l, uint64_t u, int fl) {
+  uint64_t h = (l >> 1) + (u >> 1), b, e;
+  if ((l & 1) && (u & 1))
+    h++;
+  if (l >= u)
+    return h;
+  printf("check %lx: ", h);
+  if (nd(dhcpprefix, h)) {
+    if (verbose)
+      puts("hit");
+    return fl ? dflimit(l, h - 1, fl) : dflimit(h + 1, u, fl);
+  }
   if (verbose)
-    printf("check %lx: ", cid);
+    puts("miss");
+  if (window > h - l)
+    b = l;
+  else
+    b = h - window;
+  if (window > u - h)
+    e = u;
+  else
+    e = h + window;
+  for (uint64_t i = b; i <= e; i++) {
+    if (verbose)
+      printf("check in window [%lx, %lx] %lx: ", b, e, i);
+    if (nd(dhcpprefix, i)) {
+      if (verbose)
+        puts("hit");
+      return fl ? dflimit(l, i - 1, fl) : dflimit(i + 1, u, fl);
+    }
+    if (verbose)
+      puts("miss");
+  }
+  return fl ? dflimit(h + 1, u, fl) : dflimit(l, h - 1, fl);
+}
+
+void ddelimit(uint64_t h) {
+  llim = dflimit(0, h, 1);
+  ulim = dflimit(h, 0xffffffffffffffff, 0);
+}
+
+int rflimit_ck(uint64_t h) {
+  if (verbose)
+    printf("check %lx: ", h);
   for (int i = 0; i < dhcp_cache_cur; i++)
-    if (cid == dhcp_cache[i]) {
+    if (h == dhcp_cache[i]) {
       if (verbose)
         puts("hit in cache");
       return 1;
     }
-  if (ddrebind(cid)) {
+  if (rebind(h)) {
     if (verbose)
       puts("hit in dhcp reply");
     return 1;
   }
-  if (ddnd(dhcpprefix, cid)) {
+  if (nd(dhcpprefix, h)) {
     if (verbose)
       puts("hit in neighbor advertise");
     return 1;
@@ -657,68 +711,56 @@ int rebind_check(uint64_t cid) {
   return 0;
 }
 
-/* binary search lower/upper limit of dhcp server address pool */
-
-uint64_t rebind_find_lower_limit() {
-  uint64_t h = (llid >> 1) + (luid >> 1);
-  if ((llid & 1) && (luid & 1))
+uint64_t rflimit(uint64_t l, uint64_t u, int fl) {
+  uint64_t h = (l >> 1) + (u >> 1);
+  if ((l & 1) && (u & 1))
     h++;
-  if (llid + 1 >= luid)
+  if (l >= u)
     return h;
-  if (rebind_check(h))
-    luid = h;
-  else
-    llid = h;
-  return rebind_find_lower_limit();
+  if (rflimit_ck(h))
+    return fl ? rflimit(l, h - 1, fl) : rflimit(h + 1, u, fl);
+  return fl ? rflimit(h + 1, u, fl) : rflimit(l, h - 1, fl);
 }
 
-uint64_t rebind_find_upper_limit() {
-  uint64_t h = (ulid >> 1) + (uuid >> 1);
-  if ((ulid & 1) && (uuid & 1))
-    h++;
-  if (ulid + 1 >= uuid)
-    return h;
-  if (rebind_check(h))
-    ulid = h;
-  else
-    uuid = h;
-  return rebind_find_upper_limit();
+void rdelimit(uint64_t h) {
+  llim = rflimit(0, h, 1);
+  ulim = rflimit(h, 0xffffffffffffffff, 0);
 }
 
-/* repeat solicit address, find the min and the max */
-void solicit_delimit(int n) {
+void sdelimit(uint64_t h) {
   uint64_t delta;
 
-  if (!n)
+  llim = ulim = h;
+  if (!count)
     return;
-  for (int i = 0; i < n; i++) {
-    if (!ddsolicit(0)) {
+  for (int i = 0; i < count; i++) {
+    if (!solicit(0, 1)) {
       if (verbose)
-        printf("lid: %lx, uid: %lx, solicit failed\n", luid, ulid);
+        printf("llim: %lx, ulim: %lx, solicit failed\n", llim, ulim);
       continue;
     }
-    if (dhcpaid < luid)
-      luid = dhcpaid;
-    if (dhcpaid > ulid)
-      ulid = dhcpaid;
+    if (dhcpaid < llim)
+      llim = dhcpaid;
+    if (dhcpaid > ulim)
+      ulim = dhcpaid;
     if (verbose)
-      printf("lid: %lx, uid: %lx, solicited: %lx\n", luid, ulid, dhcpaid);
+      printf("llim: %lx, ulim: %lx, solicit: %lx\n", llim, ulim, dhcpaid);
   }
-  delta = (ulid - luid) / n;
-  if (delta > luid)
-    llid = 0;
+  delta = (ulim - llim) / count;
+  if (delta > llim)
+    llim = 0;
   else
-    llid = luid - delta;
-  if (delta > 0xffffffffffffffff - ulid)
-    uuid = 0xffffffffffffffff;
+    llim -= delta;
+  if (delta > 0xffffffffffffffff - ulim)
+    ulim = 0xffffffffffffffff;
   else
-    uuid = ulid + delta;
+    ulim += delta;
 }
 
-void ddprint_dhcp6() {
-  solicited = 0;
-  ddsolicit(1);
-  solicited = 1;
+void print_dhcp6() {
+  uint64_t dhcpaid1;
+
+  solicit(1, 0);
 
   if (!inet_ntop(AF_INET6, dhcpip.s6_addr, ntopbuf, INET6_ADDRSTRLEN)) {
     perror("inet_ntop failed");
@@ -736,47 +778,47 @@ void ddprint_dhcp6() {
     exit(-1);
   }
   printf("DHCP allocated: %s\n", ntopbuf);
-  printf("DHCP prefered lifetime: %d\n", dhcppreferedtime);
-  printf("DHCP valid lifetime: %d\n", dhcpvalidtime);
+  printf("DHCP preferedtime: %d\n", dhcppreferedtime);
+  printf("DHCP validtime: %d\n", dhcpvalidtime);
 
+mode:
   switch (mode) {
-  case solicit_once:
+  case n_mode:
+    return;
     break;
-  case solicit:
-    luid = ulid = dhcpaid;
-    solicit_delimit(solicit_count);
-    printf("DHCP fake lower limit: %lx\n", luid);
-    printf("DHCP fake upper limit: %lx\n", ulid);
-    printf("DHCP fake limit probe: %lf\n",
-           (double)(solicit_count - 1) / (solicit_count + 1));
-    printf("DHCP lower limit: %lx\n", llid);
-    printf("DHCP upper limit: %lx\n", uuid);
+  case a_mode:
+    puts("DHCP delimit method: Auto");
+    dhcpaid1 = dhcpaid;
+    solicit(1, 1);
+    if (dhcpaid == dhcpaid + 1)
+      mode = d_mode;
+    if (rebind(dhcpaid - 1) || rebind(dhcpaid + 1))
+      mode = r_mode;
+    mode = s_mode;
+    goto mode;
     break;
-  case rebind:
-    llid = 0;
-    luid = ulid = dhcpaid;
-    uuid = 0xffffffffffffffff;
-    printf("DHCP lower limit: %lx\n", rebind_find_lower_limit());
-    printf("DHCP upper limit: %lx\n", rebind_find_upper_limit());
+  case d_mode:
+    puts("DHCP delimit method: DeHCP");
+    ddelimit(dhcpaid);
+    break;
+  case r_mode:
+    puts("DHCP delimit method: Rebind");
+    rdelimit(dhcpaid);
+    break;
+  case s_mode:
+    puts("DHCP delimit method: Solicit");
+    sdelimit(dhcpaid);
     break;
   }
+
+  printf("DHCP llimit: %lx\n", llim);
+  printf("DHCP ulimit: %lx\n", ulim);
 }
 
 int main(int argc, char **argv) {
   parseargs(argc, argv);
-  ddsend_init();
-  ddselect_init();
+  sr_init();
   srandom(time(NULL));
-
-  if (count == 1) {
-    ddprint_dhcp6();
-  } else {
-    while (count-- > 0) {
-      puts("--- BEG ---");
-      ddprint_dhcp6();
-      puts("--- END ---");
-    }
-  }
-
+  print_dhcp6();
   return 0;
 }

@@ -704,7 +704,7 @@ int rebind(uint64_t rid) {
   ((uint64_t *)(buf + cur + 4))[0] = htobe64(dhcpprefix);
   ((uint64_t *)(buf + cur + 4))[1] = htobe64(rid);
   cur += 28;
-  udphdr->uh_ulen = htons(cur);
+  udphdr->len = htons(cur);
   rebind_flag = 0;
   sr(mac, prefix, id, NXT_UDP, &dhcpfilter, rebind_cb);
   if (!sr_flag)

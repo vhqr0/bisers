@@ -146,3 +146,49 @@ winserver160	0	fea400109bc66f38	0.997	0.995
 winserver160	0	ff2ffdc1d70eedef	0.999	0.997
 
 % 0.998 0.997
+
+# addrscisco.txt 0 ffffffffffffffff
+
+cisco32	0	ffffffffffffffff	1.0	1.0
+cisco32	0	ffffffffffffffff	1.0	1.0
+cisco32	0	ffdfe99428ad6499	1.0	1.0
+cisco32	e80a3046f03f0d1	ffffffffffffffff	0.951	0.943
+cisco32	0	f4f5debdd6e29e91	0.97	0.957
+cisco32	2b7e1137d552ec5	e89e2e1695cc0b1c	0.912	0.898
+cisco32	d93be5084d03717	ffffffffffffffff	0.954	0.947
+cisco32	e9dcacaed672797	ffffffffffffffff	0.951	0.943
+
+% 0.967 0.961
+
+cisco64	0	ffffffffffffffff	1.0	1.0
+cisco64	0	ffffffffffffffff	1.0	1.0
+cisco64	0	ffffffffffffffff	1.0	1.0
+cisco64	0	fc84f924ddba88ab	0.991	0.986
+cisco64	770e08b837fd87	ffffffffffffffff	0.998	0.998
+cisco64	0	fd6f4b56d0b522b5	0.996	0.99
+cisco64	0	fd40890a1ab73582	0.996	0.989
+cisco64	43d9d9581e9249b	fdc6877addf33d9a	0.989	0.975
+
+% 0.996 0.992
+
+cisco128	38d570456c0937f	fed1f3bceb8031dd	0.99	0.982
+cisco128	0	ff46e58b670d7168	1.0	0.997
+cisco128	0	fef7ddc3423844e9	1.0	0.996
+cisco128	0	ffb35c99df96c6ed	1.0	0.999
+cisco128	0	ff7bb6dcdff04b29	1.0	0.998
+cisco128	0	ffa37d838685b2f9	1.0	0.999
+cisco128	3101764c6589c42	ffece142ee8e891e	0.99	0.988
+cisco128	0	feb24f6c93a7b0b8	1.0	0.995
+
+% 0.998 0.994
+
+cisco160	0	ff293fe7ef24b55a	1.0	0.997
+cisco160	0	ff653b54ae98c440	1.0	0.998
+cisco160	0	fb5ef04cf05f4736	0.99	0.982
+cisco160	0	ff6d70eaa47ccb2b	1.0	0.998
+cisco160	0	ff1d4bdd4bb96ff2	1.0	0.997
+cisco160	0	ff7eedc4276d1b84	1.0	0.998
+cisco160	0	fd96d53992ff13cb	0.996	0.991
+cisco160	0	fdbb9a2589fea863	0.999	0.991
+
+% 0.998 0.994

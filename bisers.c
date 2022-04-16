@@ -1,4 +1,5 @@
 #include <endian.h>
+#include <errno.h>
 #include <getopt.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -33,6 +34,7 @@ void help() {
   puts("-i, --interface     interface, default via pcap");
   puts("-T, --tag           tag output minor mode");
   puts("-v, --verbose       verbose output minor mode");
+  puts("-C, --cache         cache file minor mode");
   puts("-t, --timeout       specified sr timeout, default to 100 (ms)");
   puts("-w, --window        specified dehcp window, defualt to 3");
   puts("-c, --count         specified solicit count, default to 128");
@@ -43,7 +45,7 @@ void help() {
   puts("-n, --no-delimit    no delimit, just solicit once");
 }
 
-const char *iface = NULL, *tag = NULL;
+const char *iface = NULL, *tag = NULL, *cache = NULL;
 int verbose = 0, timeout = 100, window = 3, count = 128;
 enum { d_mode, r_mode, s_mode, a_mode, n_mode } mode = a_mode;
 char errbuf[PCAP_ERRBUF_SIZE] = {0}, ntopbuf[INET6_ADDRSTRLEN];
@@ -55,6 +57,7 @@ void parseargs(int argc, char **argv) {
                              {"interface", required_argument, NULL, 'i'},
                              {"tag", required_argument, NULL, 'T'},
                              {"verbose", no_argument, NULL, 'v'},
+                             {"cache", required_argument, NULL, 'C'},
                              {"timeout", required_argument, NULL, 't'},
                              {"window", required_argument, NULL, 'w'},
                              {"count", required_argument, NULL, 'c'},
@@ -63,7 +66,7 @@ void parseargs(int argc, char **argv) {
                              {"solicit", no_argument, NULL, 's'},
                              {"no-delimit", no_argument, NULL, 'n'}};
 
-  while ((opt = getopt_long(argc, argv, "hi:T:vt:w:c:drsan", options,
+  while ((opt = getopt_long(argc, argv, "hi:T:vC:t:w:c:drsan", options,
                             &optind)) > 0) {
     switch (opt) {
     case 'h':
@@ -77,6 +80,9 @@ void parseargs(int argc, char **argv) {
       break;
     case 'v':
       verbose = 1;
+      break;
+    case 'C':
+      cache = optarg;
       break;
     case 't':
       timeout = atoi(optarg);
@@ -121,6 +127,60 @@ void parseargs(int argc, char **argv) {
   }
   if (tag)
     verbose = 0;
+}
+
+#define DHCP_CACHE_SIZE 1024
+uint64_t dhcp_cache[DHCP_CACHE_SIZE];
+int dhcp_cache_cur = 0;
+
+void cache_in() {
+  FILE *fp;
+  uint64_t id;
+
+  if (!(fp = fopen(cache, "r"))) {
+    if (errno != EEXIST)
+      perror("fopen failed");
+    return;
+  }
+  dhcp_cache_cur = 0;
+  for (;;) {
+    switch (fscanf(fp, "%lx\n", &id)) {
+    case EOF:
+      if (ferror(fp)) {
+        perror("fscanf failed");
+        exit(-1);
+      }
+      goto close;
+      break;
+    case 0:
+      fprintf(stderr, "fscanf invalid data\n");
+      exit(-1);
+      break;
+    case 1:
+      if (dhcp_cache_cur >= DHCP_CACHE_SIZE)
+        goto close;
+      dhcp_cache[dhcp_cache_cur++] = id;
+      break;
+    default:
+      fprintf(stderr, "fscanf unknown return value\n");
+    }
+  }
+close:
+  fclose(fp);
+}
+
+void cache_out() {
+  FILE *fp;
+
+  if (!(fp = fopen(cache, "w"))) {
+    perror("fopen failed");
+    exit(-1);
+  }
+
+  for (int i = 0; i < dhcp_cache_cur; i++)
+    fprintf(fp, "%lx\n", dhcp_cache[i]);
+
+  fclose(fp);
 }
 
 /* sall:   lladdress (iface index)
@@ -401,18 +461,13 @@ int nd(uint64_t dprefix, uint64_t did) {
   return sr_flag;
 }
 
-/* dhcp_cache:       cache for allocated addr
- * cduid:            client id option
+/* cduid:            client id option
  * sduid:            server id option
  * trid, iaid:       dhcp solicit/rebind id
  * dhcpip:           dhcp server address
  * dhcpaip:          dhcp allocated address, dhcpprefix+dhcpaid
  * solicited_flag:   if have solicited, we want track the same server
  */
-
-#define DHCP_CACHE_SIZE 128
-uint64_t dhcp_cache[DHCP_CACHE_SIZE];
-int dhcp_cache_cur = 0;
 
 #define DUID_MAX_LEN 128
 uint8_t cduid[DUID_MAX_LEN], sduid[DUID_MAX_LEN];
@@ -764,6 +819,12 @@ void sdelimit(uint64_t h) {
 void print_dhcp6() {
   uint64_t dhcpaid1;
 
+  if (cache) {
+    cache_in();
+    if (!tag)
+      printf("DHCP load %d cache\n", dhcp_cache_cur);
+  }
+
   solicit(1, 0);
 
   if (!tag) {
@@ -827,12 +888,22 @@ mode:
     printf("DHCP llimit: %lx\n", llim);
     printf("DHCP ulimit: %lx\n", ulim);
   }
+
+  if (cache) {
+    cache_out();
+    if (!tag)
+      printf("DHCP save %d cache\n", dhcp_cache_cur);
+  }
 }
 
 int main(int argc, char **argv) {
   parseargs(argc, argv);
   sr_init();
   srandom(time(NULL));
+  if (cache)
+    cache_in();
   print_dhcp6();
+  if (cache)
+    cache_out();
   return 0;
 }

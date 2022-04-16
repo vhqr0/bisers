@@ -138,8 +138,10 @@ void cache_in() {
   uint64_t id;
 
   if (!(fp = fopen(cache, "r"))) {
-    if (errno != EEXIST)
+    if (errno != EEXIST) {
       perror("fopen failed");
+      exit(-1);
+    }
     return;
   }
   dhcp_cache_cur = 0;

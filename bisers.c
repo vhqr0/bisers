@@ -26,22 +26,24 @@
 #include <pcap.h>
 
 void help() {
-  puts("Usage: bisers [-i INTERFACE] [-v] [-t TIMEOUT] [-w WINDOW] [-c COUNT]");
+  puts("Usage: bisers [-i INTERFACE] [-T TAG] [-v]");
+  puts("              [-t TIMEOUT] [-w WINDOW] [-c COUNT]");
   puts("              {-h | -d | -r | -s | -n}");
   puts("-h, --help          show this message");
-  puts("-i, --interface     specified interface, default via pcap");
-  puts("-v, --verbose       specified debuginfo during delimit");
-  puts("-t, --timeout       specified timeout, default to 100 (ms)");
+  puts("-i, --interface     interface, default via pcap");
+  puts("-T, --tag           tag output minor mode");
+  puts("-v, --verbose       verbose output minor mode");
+  puts("-t, --timeout       specified sr timeout, default to 100 (ms)");
   puts("-w, --window        specified dehcp window, defualt to 3");
   puts("-c, --count         specified solicit count, default to 128");
-  puts("-d, --dehcp         delimit by dehcp");
-  puts("-r, --rebind        delimit by rebind");
-  puts("-s, --solicit       delimit by solicit");
+  puts("-d, --dehcp         delimit by dehcp mode");
+  puts("-r, --rebind        delimit by rebind mode");
+  puts("-s, --solicit       delimit by solicit mode");
   puts("-a, --auto          auto select delimit method (default)");
   puts("-n, --no-delimit    no delimit, just solicit once");
 }
 
-const char *iface = NULL;
+const char *iface = NULL, *tag = NULL;
 int verbose = 0, timeout = 100, window = 3, count = 128;
 enum { d_mode, r_mode, s_mode, a_mode, n_mode } mode = a_mode;
 char errbuf[PCAP_ERRBUF_SIZE] = {0}, ntopbuf[INET6_ADDRSTRLEN];
@@ -51,6 +53,7 @@ void parseargs(int argc, char **argv) {
   int opt, optind;
   struct option options[] = {{"help", no_argument, NULL, 'h'},
                              {"interface", required_argument, NULL, 'i'},
+                             {"tag", required_argument, NULL, 'T'},
                              {"verbose", no_argument, NULL, 'v'},
                              {"timeout", required_argument, NULL, 't'},
                              {"window", required_argument, NULL, 'w'},
@@ -60,14 +63,17 @@ void parseargs(int argc, char **argv) {
                              {"solicit", no_argument, NULL, 's'},
                              {"no-delimit", no_argument, NULL, 'n'}};
 
-  while ((opt = getopt_long(argc, argv, "hi:vt:w:c:drsan", options, &optind)) >
-         0) {
+  while ((opt = getopt_long(argc, argv, "hi:T:vt:w:c:drsan", options,
+                            &optind)) > 0) {
     switch (opt) {
     case 'h':
       help();
       exit(0);
     case 'i':
       iface = optarg;
+      break;
+    case 'T':
+      tag = optarg;
       break;
     case 'v':
       verbose = 1;
@@ -113,6 +119,8 @@ void parseargs(int argc, char **argv) {
     dev = *alldevs;
     iface = dev.name;
   }
+  if (tag)
+    verbose = 0;
 }
 
 /* sall:   lladdress (iface index)
@@ -421,14 +429,13 @@ int solicited_flag = 0;
  * initialized by solicit, trid/iaid is randomized generated every
  * time call solicit and rebind.  solicit_cb check serverid option and
  * set sduid, and, check iana option and set dhcpprefix, t1, t2,
- * validtime and preferedtime.  the solicited_flag address shoud append to
+ * validtime and preferedtime.  the solicited address shoud append to
  * dhcp_cache.
  */
 void solicit_cb(u_char *user, const struct pcap_pkthdr *h,
                 const u_char *bytes) {
   struct ip6_hdr *ip6hdr =
       (struct ip6_hdr *)((uint8_t *)bytes + sizeof(struct ethhdr));
-  struct udphdr *udphdr = (struct udphdr *)((uint8_t *)bytes + HDRSIZE);
   uint8_t *c = (uint8_t *)bytes + HDRSIZE + sizeof(struct udphdr);
   int cr = h->caplen - HDRSIZE - sizeof(struct udphdr), cl;
   int fcid = 0, fsid = 0, fiana = 0;
@@ -549,7 +556,6 @@ int solicit(int required, int solicited) {
   buf[cur + 5] = 23; /* optreq: dns */
   buf[cur + 7] = 24; /* optreq: localdomain */
   cur += 8;
-
   udphdr->len = htons(cur);
   sr(mac, prefix, id, NXT_UDP, &dhcpfilter, solicit_cb);
   if (required && !sr_flag) {
@@ -572,7 +578,6 @@ int rebind_flag;
 void rebind_cb(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes) {
   struct ip6_hdr *ip6hdr =
       (struct ip6_hdr *)((uint8_t *)bytes + sizeof(struct ethhdr));
-  struct udphdr *udphdr = (struct udphdr *)((uint8_t *)bytes + HDRSIZE);
   uint8_t *c = (uint8_t *)bytes + HDRSIZE + sizeof(struct udphdr);
   int cr = h->caplen - HDRSIZE - sizeof(struct udphdr), cl;
 
@@ -635,7 +640,6 @@ int rebind(uint64_t rid) {
   ((uint64_t *)(buf + cur + 4))[0] = htobe64(dhcpprefix);
   ((uint64_t *)(buf + cur + 4))[1] = htobe64(rid);
   cur += 28;
-
   udphdr->uh_ulen = htons(cur);
   rebind_flag = 0;
   sr(mac, prefix, id, NXT_UDP, &dhcpfilter, rebind_cb);
@@ -762,24 +766,26 @@ void print_dhcp6() {
 
   solicit(1, 0);
 
-  if (!inet_ntop(AF_INET6, dhcpip.s6_addr, ntopbuf, INET6_ADDRSTRLEN)) {
-    perror("inet_ntop failed");
-    exit(-1);
+  if (!tag) {
+    if (!inet_ntop(AF_INET6, dhcpip.s6_addr, ntopbuf, INET6_ADDRSTRLEN)) {
+      perror("inet_ntop failed");
+      exit(-1);
+    }
+    printf("DHCP IP: %s\n", ntopbuf);
+    printf("DHCP DUID: ");
+    for (int i = 4; i < sduidlen; i++)
+      printf("%02x", sduid[i]);
+    printf("\n");
+    printf("DHCP T1: %d\n", dhcpt1);
+    printf("DHCP T2: %d\n", dhcpt2);
+    if (!inet_ntop(AF_INET6, dhcpaip.s6_addr, ntopbuf, INET6_ADDRSTRLEN)) {
+      perror("inet_ntop failed");
+      exit(-1);
+    }
+    printf("DHCP allocated: %s\n", ntopbuf);
+    printf("DHCP preferedtime: %d\n", dhcppreferedtime);
+    printf("DHCP validtime: %d\n", dhcpvalidtime);
   }
-  printf("DHCP IP: %s\n", ntopbuf);
-  printf("DHCP DUID: ");
-  for (int i = 4; i < sduidlen; i++)
-    printf("%02x", sduid[i]);
-  printf("\n");
-  printf("DHCP T1: %d\n", dhcpt1);
-  printf("DHCP T2: %d\n", dhcpt2);
-  if (!inet_ntop(AF_INET6, dhcpaip.s6_addr, ntopbuf, INET6_ADDRSTRLEN)) {
-    perror("inet_ntop failed");
-    exit(-1);
-  }
-  printf("DHCP allocated: %s\n", ntopbuf);
-  printf("DHCP preferedtime: %d\n", dhcppreferedtime);
-  printf("DHCP validtime: %d\n", dhcpvalidtime);
 
 mode:
   switch (mode) {
@@ -787,7 +793,8 @@ mode:
     return;
     break;
   case a_mode:
-    puts("DHCP delimit method: Auto");
+    if (!tag)
+      puts("DHCP delimit method: Auto");
     dhcpaid1 = dhcpaid;
     solicit(1, 1);
     if (dhcpaid == dhcpaid + 1)
@@ -798,21 +805,28 @@ mode:
     goto mode;
     break;
   case d_mode:
-    puts("DHCP delimit method: DeHCP");
+    if (!tag)
+      puts("DHCP delimit method: DeHCP");
     ddelimit(dhcpaid);
     break;
   case r_mode:
-    puts("DHCP delimit method: Rebind");
+    if (!tag)
+      puts("DHCP delimit method: Rebind");
     rdelimit(dhcpaid);
     break;
   case s_mode:
-    puts("DHCP delimit method: Solicit");
+    if (!tag)
+      puts("DHCP delimit method: Solicit");
     sdelimit(dhcpaid);
     break;
   }
 
-  printf("DHCP llimit: %lx\n", llim);
-  printf("DHCP ulimit: %lx\n", ulim);
+  if (tag) {
+    printf("%s\t%lx\t%lx\n", tag, llim, ulim);
+  } else {
+    printf("DHCP llimit: %lx\n", llim);
+    printf("DHCP ulimit: %lx\n", ulim);
+  }
 }
 
 int main(int argc, char **argv) {

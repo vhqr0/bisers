@@ -54,3 +54,49 @@ isc160	fff856	1fac72b	0.991	0.979
 isc160	102833b	1ff159b	0.989	0.987
 
 % 0.997 0.991
+
+# addrsopenwrt.txt 10c ff3
+
+openwrt32	124	1054	0.988	0.968
+openwrt32	124	1054	0.988	0.968
+openwrt32	95	106a	1.0	0.938
+openwrt32	96	1056	1.0	0.943
+openwrt32	124	1065	0.988	0.964
+openwrt32	96	1058	1.0	0.943
+openwrt32	124	1065	0.988	0.964
+openwrt32	96	1058	1.0	0.943
+
+% 0.994 0.954
+
+openwrt64	d1	102e	1.0	0.969
+openwrt64	d1	102e	1.0	0.969
+openwrt64	d1	102e	1.0	0.969
+openwrt64	d1	102e	1.0	0.969
+openwrt64	d1	102e	1.0	0.969
+openwrt64	d1	102e	1.0	0.969
+openwrt64	d1	102e	1.0	0.969
+openwrt64	d1	102e	1.0	0.969
+
+% 1.0 0.969
+
+openwrt128	ef	1010	1.0	0.985
+openwrt128	ef	1010	1.0	0.985
+openwrt128	ef	1010	1.0	0.985
+openwrt128	ef	1010	1.0	0.985
+openwrt128	ef	1010	1.0	0.985
+openwrt128	ef	1010	1.0	0.985
+openwrt128	ef	1010	1.0	0.985
+openwrt128	ef	1010	1.0	0.985
+
+% 1.0 0.985
+
+openwrt160	f5	100a	1.0	0.988
+openwrt160	f5	100a	1.0	0.988
+openwrt160	f5	100a	1.0	0.988
+openwrt160	f5	100a	1.0	0.988
+openwrt160	f5	100a	1.0	0.988
+openwrt160	f5	100a	1.0	0.988
+openwrt160	f5	100a	1.0	0.988
+openwrt160	f5	100a	1.0	0.988
+
+% 1.0 0.988

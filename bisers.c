@@ -27,8 +27,8 @@
 #include <pcap.h>
 
 void help() {
-  puts("Usage: bisers [-i INTERFACE] [-T TAG] [-v]");
-  puts("              [-t TIMEOUT] [-w WINDOW] [-c COUNT]");
+  puts("Usage: bisers [-i INTERFACE] [-T TAG] [-v] [-C CACHE]");
+  puts("              [-t TIMEOUT] [-I INTERNAL] [-w WINDOW] [-c COUNT]");
   puts("              {-h | -d | -r | -s | -n}");
   puts("-h, --help          show this message");
   puts("-i, --interface     interface, default via pcap");
@@ -36,6 +36,7 @@ void help() {
   puts("-v, --verbose       verbose output minor mode");
   puts("-C, --cache         cache file minor mode");
   puts("-t, --timeout       specified sr timeout, default to 100 (ms)");
+  puts("-I, --internal      specified sr internal, default to 0 (ms)");
   puts("-w, --window        specified dehcp window, defualt to 3");
   puts("-c, --count         specified solicit count, default to 128");
   puts("-d, --dehcp         delimit by dehcp mode");
@@ -46,7 +47,7 @@ void help() {
 }
 
 const char *iface = NULL, *tag = NULL, *cache = NULL;
-int verbose = 0, timeout = 100, window = 3, count = 128;
+int verbose = 0, timeout = 100, internal = 0, window = 3, count = 128;
 enum { d_mode, r_mode, s_mode, a_mode, n_mode } mode = a_mode;
 char errbuf[PCAP_ERRBUF_SIZE] = {0}, ntopbuf[INET6_ADDRSTRLEN];
 
@@ -59,6 +60,7 @@ void parseargs(int argc, char **argv) {
                              {"verbose", no_argument, NULL, 'v'},
                              {"cache", required_argument, NULL, 'C'},
                              {"timeout", required_argument, NULL, 't'},
+                             {"internal", required_argument, NULL, 'I'},
                              {"window", required_argument, NULL, 'w'},
                              {"count", required_argument, NULL, 'c'},
                              {"dehcp", no_argument, NULL, 'd'},
@@ -66,7 +68,7 @@ void parseargs(int argc, char **argv) {
                              {"solicit", no_argument, NULL, 's'},
                              {"no-delimit", no_argument, NULL, 'n'}};
 
-  while ((opt = getopt_long(argc, argv, "hi:T:vC:t:w:c:drsan", options,
+  while ((opt = getopt_long(argc, argv, "hi:T:vC:t:I:w:c:drsan", options,
                             &optind)) > 0) {
     switch (opt) {
     case 'h':
@@ -86,6 +88,9 @@ void parseargs(int argc, char **argv) {
       break;
     case 't':
       timeout = atoi(optarg);
+      break;
+    case 'I':
+      internal = atoi(optarg);
       break;
     case 'w':
       window = atoi(optarg);
@@ -365,6 +370,8 @@ void sr(uint64_t mac, uint64_t prefix, uint64_t id, uint8_t nxt,
       break;
     }
   }
+  if (internal)
+    usleep(internal << 10);
 }
 
 /* udp checksum

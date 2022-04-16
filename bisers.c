@@ -900,10 +900,6 @@ int main(int argc, char **argv) {
   parseargs(argc, argv);
   sr_init();
   srandom(time(NULL));
-  if (cache)
-    cache_in();
   print_dhcp6();
-  if (cache)
-    cache_out();
   return 0;
 }

@@ -100,3 +100,49 @@ openwrt160	f5	100a	1.0	0.988
 openwrt160	f5	100a	1.0	0.988
 
 % 1.0 0.988
+
+# addrswinserver.txt 0 ffffffffffffffff
+
+winserver32	edf4af0a19cd27e	ffffffffffffffff	0.943	0.942
+winserver32	0	ffffffffffffffff	1.0	1.0
+winserver32	0	f1582b9c011505ee	0.935	0.943
+winserver32	0	f8b08e43a7a268fe	0.972	0.971
+winserver32	0	f3ab00d5df36afa1	0.948	0.952
+winserver32	65fdc1b828d186d	ffffffffffffffff	0.973	0.975
+winserver32	0	fbac8f2bf6ce59c8	0.982	0.983
+winserver32	0	ffffffffffffffff	1.0	1.0
+
+% 0.969 0.971
+
+winserver64	0	ffffffffffffffff	1.0	1.0
+winserver64	0	ffffffffffffffff	1.0	1.0
+winserver64	fd4526936faa6f	ffffffffffffffff	0.995	0.996
+winserver64	0	febd83a08204d96a	0.998	0.995
+winserver64	0	ffffffffffffffff	1.0	1.0
+winserver64	3cbd29816d80188	ff9f47486e7b79ea	0.985	0.984
+winserver64	3c86b41b31e8eaf	f6db7e6f14847771	0.948	0.95
+winserver64	0	ffffffffffffffff	1.0	1.0
+
+% 0.991 0.991
+
+winserver128	0	fd165c8360b7b6e3	0.989	0.989
+winserver128	0	ffffffffffffffff	1.0	1.0
+winserver128	1b5ad316c1fe1d0	fdb1b9d00778c9d7	0.983	0.984
+winserver128	0	fe2dfad3950026d9	0.992	0.993
+winserver128	0	ffffffffffffffff	1.0	1.0
+winserver128	0	ffeb3191fe128df7	1.0	1.0
+winserver128	0	fd998cb2834cd801	0.992	0.991
+winserver128	0	ffffffffffffffff	1.0	1.0
+
+% 0.995 0.995
+
+winserver160	0	ffffffffffffffff	1.0	1.0
+winserver160	0	ffffffffffffffff	1.0	1.0
+winserver160	0	ffffffffffffffff	1.0	1.0
+winserver160	0	fe869dcf22b48d0e	0.997	0.994
+winserver160	ed8fc8e947d3a	ffffffffffffffff	0.999	1.0
+winserver160	0	fdfb89e4b8023818	0.992	0.992
+winserver160	0	fea400109bc66f38	0.997	0.995
+winserver160	0	ff2ffdc1d70eedef	0.999	0.997
+
+% 0.998 0.997

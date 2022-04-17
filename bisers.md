@@ -1,6 +1,22 @@
-# 引言
+# 摘要
 
-## IPv6网络扫描
+Bisers：一种高效的DHCPv6地址池边界探测方案
+
+Bisers: An efficient DHCPv6 address pool boundary detection solution
+
+本文提出了两个DHCPv6定界算法，并且结合一个已经提出的定界算法，提出了一
+种高效的DHCPv6地址池定界方案。该方案对目前主流的DHCPv6服务端实现都可以
+在几秒钟内准确地定界。DHCPv6定界可以直接帮助IPv6网络扫描，也可能有更多
+应用。
+
+In this paper, two DHCPv6 delimitation algorithms are proposed, and
+combined with an already proposed delimitation algorithm, an efficient
+DHCPv6 address pool delimitation solution is proposed. This solution
+can accurately delimit the current mainstream DHCPv6 server
+implementations within a few seconds. DHCPv6 delimitation can directly
+help IPv6 network scanning, and may have more applications.
+
+# 引言
 
 扫描网络中存活的主机是资产管理与渗透测试的一个重要组成部分。IPv4看似庞
 大的32位地址空间可以用Zmap、masscan等无状态扫描工具在几小时内扫描完成，
@@ -295,3 +311,14 @@ Rebind的定界算法。
 基于Solicit的DHCPv6定界方法对使用符合其它的概率分布模型的地址生成方式
 的DHCPv6服务端实现的有效性以及可能带来的安全隐患还可以做进一步研究；此
 外，关于DHCPv6定界在网络扫描之外的应用也有待研究。
+
+# 参考文献
+
+[1] S. Groat, M. Dunlop, R. Marchany, J. Tront, What DHCPv6 says about
+you // Proceedings of the World Congress on Internet Security
+(WorldCIS), London, UK, 2011: 146-151
+
+[2] E. Bergenholtz, A. Moss, D. Ilie, E. Casalicchio, Finding a needle
+in a haystack: A comparative study of IPv6 scanning methods //
+Proceedings of the International Symposium on Networks, Computers and
+Communications (ISNCC), New York, USA, 2019

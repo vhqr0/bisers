@@ -15,6 +15,7 @@
 #include <sys/types.h>
 
 #include <arpa/inet.h>
+#include <ifaddrs.h>
 #include <net/if.h>
 #include <netinet/icmp6.h>
 #include <netinet/in.h>
@@ -130,8 +131,6 @@ void parseargs(int argc, char **argv) {
     dev = *alldevs;
     iface = dev.name;
   }
-  if (tag)
-    verbose = 0;
 }
 
 #define DHCP_CACHE_SIZE 1024
@@ -233,6 +232,7 @@ int sr_flag = 0;
 
 void sr_init() {
   struct ifreq ifr;
+  struct ifaddrs *ifa, *ifac;
 
   /* init ifr */
   memset(&ifr, 0, sizeof(ifr));
@@ -275,13 +275,23 @@ void sr_init() {
   memcpy(ethhdr->h_source, ifr.ifr_hwaddr.sa_data, 6);
   ethhdr->h_proto = htons(ETH_P_IPV6);
   /* init pkt ip6 fields */
-  ip6hdr->ip6_src.s6_addr[0] = 0xfe;
-  ip6hdr->ip6_src.s6_addr[1] = 0x80;
-  memcpy(ip6hdr->ip6_src.s6_addr + 8, ethhdr->h_source, 3);
-  ip6hdr->ip6_src.s6_addr[8] ^= 2;
-  ip6hdr->ip6_src.s6_addr[11] = 0xff;
-  ip6hdr->ip6_src.s6_addr[12] = 0xfe;
-  memcpy(ip6hdr->ip6_src.s6_addr + 13, ethhdr->h_source + 3, 3);
+  getifaddrs(&ifa);
+  for (ifac = ifa; ifac; ifac = ifac->ifa_next) {
+    if (strcmp(ifac->ifa_name, iface) ||
+        ifac->ifa_addr->sa_family != AF_INET6 ||
+        ((struct sockaddr_in6 *)(ifac->ifa_addr))->sin6_addr.s6_addr16[0] !=
+            htons(0xfe80))
+      continue;
+    memcpy(&ip6hdr->ip6_src,
+           &((struct sockaddr_in6 *)(ifac->ifa_addr))->sin6_addr,
+           sizeof(struct in6_addr));
+    break;
+  }
+  if (!ifac) {
+    fprintf(stderr, "no lladdr found for interface\n");
+    exit(-1);
+  }
+  freeifaddrs(ifa);
   ip6hdr->ip6_vfc = 0x60;
   ip6hdr->ip6_hlim = 0xff;
   /* init pcap */
@@ -290,7 +300,7 @@ void sr_init() {
     exit(-1);
   }
   if (*errbuf)
-    fprintf(stderr, "pcap_open_live warnning: %s\n", errbuf);
+    fprintf(stderr, "pcap_open_live warning: %s\n", errbuf);
   if (pcap_setnonblock(pcap, 1, errbuf) == PCAP_ERROR) {
     fprintf(stderr, "pcap_setnonblock failed: %s\n", errbuf);
     exit(-1);
@@ -352,11 +362,10 @@ void sr(uint64_t mac, uint64_t prefix, uint64_t id, uint8_t nxt,
     perror("send failed");
     exit(-1);
   }
-  /* init select */
+  /* select */
   sr_flag = 0;
   tv.tv_sec = 0;
   tv.tv_usec = timeout << 10;
-  /* select */
   while (!sr_flag && (tv.tv_usec || tv.tv_sec)) {
     FD_ZERO(&rfds);
     FD_SET(pfd, &rfds);
@@ -443,6 +452,7 @@ void nd_cb(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes) {
       (struct nd_neighbor_advert *)(bytes + HDRSIZE);
 
   if (h->caplen < HDRSIZE + sizeof(struct nd_neighbor_advert) ||
+      ip6hdr->ip6_nxt != NXT_ICMP6 ||
       be64toh(*((uint64_t *)(nahdr->nd_na_target.s6_addr + 8))) != nd_id)
     return;
 
@@ -837,7 +847,7 @@ void print_dhcp6() {
   solicit(1, 0);
 
   if (!tag) {
-    if (!inet_ntop(AF_INET6, dhcpip.s6_addr, ntopbuf, INET6_ADDRSTRLEN)) {
+    if (!inet_ntop(AF_INET6, &dhcpip, ntopbuf, INET6_ADDRSTRLEN)) {
       perror("inet_ntop failed");
       exit(-1);
     }
@@ -848,7 +858,7 @@ void print_dhcp6() {
     printf("\n");
     printf("DHCP T1: %d\n", dhcpt1);
     printf("DHCP T2: %d\n", dhcpt2);
-    if (!inet_ntop(AF_INET6, dhcpaip.s6_addr, ntopbuf, INET6_ADDRSTRLEN)) {
+    if (!inet_ntop(AF_INET6, &dhcpaip, ntopbuf, INET6_ADDRSTRLEN)) {
       perror("inet_ntop failed");
       exit(-1);
     }
@@ -869,9 +879,10 @@ mode:
     solicit(1, 1);
     if (dhcpaid == dhcpaid + 1)
       mode = d_mode;
-    if (rebind(dhcpaid - 1) || rebind(dhcpaid + 1))
+    else if (rebind(dhcpaid - 1) || rebind(dhcpaid + 1))
       mode = r_mode;
-    mode = s_mode;
+    else
+      mode = s_mode;
     goto mode;
     break;
   case d_mode:

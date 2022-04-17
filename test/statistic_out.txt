@@ -1,5 +1,18 @@
 # addrsisc.txt 1000000 1ffffff
 
+iscrebind87	ffffff	1ffffff	1.0	1.0
+iscrebind87	1000000	1fffffb	1.0	1.0
+iscrebind87	1000001	2000000	1.0	1.0
+iscrebind86	1000006 1fffffe	1.0	1.0
+iscrebind87	100000b	1ffffc6	1.0	1.0
+iscrebind87	100001b	1fffff4	1.0	1.0
+iscrebind87	1000da1	1ffffa6	1.0	1.0
+iscrebind87	1000035	1fffff0	1.0	1.0
+
+% 1.0 1.0
+
+# addrsisc.txt 1000000 1ffffff
+
 isc32	f855bb	1ff06f9	0.998	0.966
 isc32	faf762	206f1d2	1.0	0.953
 isc32	fb25f7	1fbf5fc	0.992	0.965

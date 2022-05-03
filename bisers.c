@@ -67,7 +67,8 @@ void parseargs(int argc, char **argv) {
                              {"dehcp", no_argument, NULL, 'd'},
                              {"rebind", no_argument, NULL, 'r'},
                              {"solicit", no_argument, NULL, 's'},
-                             {"no-delimit", no_argument, NULL, 'n'}};
+                             {"no-delimit", no_argument, NULL, 'n'},
+                             {0, 0, 0, 0}};
 
   while ((opt = getopt_long(argc, argv, "hi:T:vC:t:I:w:c:drsan", options,
                             &optind)) > 0) {
@@ -142,7 +143,7 @@ void cache_in() {
   uint64_t id;
 
   if (!(fp = fopen(cache, "r"))) {
-    if (errno != EEXIST) {
+    if (errno != ENOENT) {
       perror("fopen failed");
       exit(-1);
     }

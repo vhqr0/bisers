@@ -1,18 +1,37 @@
+import argparse
 import datetime
 import ipaddress
 import random
 import select
 import socket
 import struct
+import sys
 import time
 
 from dhcp6lib import *
 import pyping
 
-verbose = True
-timeout = 0.1
-window = 3
-interface = None
+parser = argparse.ArgumentParser()
+parser.add_argument('-i', '--interface')
+parser.add_argument('-v', '--verbose', action='store_true', default=False)
+parser.add_argument('-T', '--timeout', type=float, default=0.1)
+parser.add_argument('-I', '--internal', type=float, default=0.0)
+parser.add_argument('-n', '--nodelimit', action='store_true', default=False)
+parser.add_argument('-d', action='store_const', dest='force', const='ddelimit')
+parser.add_argument('-r', action='store_const', dest='force', const='rdelimit')
+parser.add_argument('-s', action='store_const', dest='force', const='sdelimit')
+parser.add_argument('-W', '--window', type=int, default=3)
+parser.add_argument('-C', '--count', type=int, default=64)
+args = parser.parse_args()
+
+interface = args.interface
+verbose = args.verbose
+timeout = args.timeout
+internal = args.internal
+nodelimit = args.nodelimit
+force = args.force
+window = args.window
+count = args.count
 
 ICMP6_ECHO_REQUEST = 128
 ICMP6_ECHO_REPLY = 129
@@ -28,7 +47,12 @@ pyping.filter_icmp6(pingfd.fileno(), ICMP6_ECHO_REPLY)
 def ping(addr):
     seq = random.getrandbits(16)
     buf = struct.pack('!BBHIQ', ICMP6_ECHO_REQUEST, 0, 0, seq, 0)
-    pingfd.sendto(buf, (addr, 0))
+    try:
+        pingfd.sendto(buf, (addr, 0))
+    except OSError:
+        if verbose:
+            print(f'ping {addr}: failed')
+        return False
     tend = time.time() + timeout
     tsel = timeout
     while True:
@@ -40,7 +64,11 @@ def ping(addr):
         if len(buf) != 16 or rseq != seq:
             tsel = tend - time.time()
             continue
+        if verbose:
+            print(f'ping {addr}: success')
         return True
+    if verbose:
+        pritn(f'ping {addr}: failed')
     return False
 
 
@@ -81,7 +109,12 @@ def dhcp6solicit(servduidfilter=None):
            servduidfilter is not None and servduidfilter != servduid:
             break
         addr, _, _, _ = dhcp6parse_iaaddr(ianaopts[DHCP6IAADDR][0])
+        addr = socket.inet_ntop(socket.AF_INET6, addr)
+        if verbose:
+            print(f'solicit: {addr}')
         return addr
+    if verbose:
+        print('solicit: failed')
     return None
 
 
@@ -119,9 +152,11 @@ def dhcp6rebind(addr, servduidfilter=None):
             tsel = tend - time.time()
             continue
         for iaaddr in ianaopts[DHCP6IAADDR]:
-            addr, preftime, validtime, _ = \
-                dhcp6parse_iaaddr(iaaddr)
-            if addr == addrbytes:
+            raddr, preftime, validtime, _ = dhcp6parse_iaaddr(iaaddr)
+            if raddr == addrbytes:
+                if verbose:
+                    print(f'rebind {addr}:'
+                          f'{"success" if validtime > 0 else "failed"}')
                 return validtime > 0
         break
     return None
@@ -158,6 +193,7 @@ def dhcp6info_1():
             continue
         addr, preftime, validtime, _ = dhcp6parse_iaaddr(
             ianaopts[DHCP6IAADDR][0])
+        addr = socket.inet_ntop(socket.AF_INET6, addr)
         res = {}
         res['duid'] = servduid
         duidtype, = struct.unpack_from('!H', buffer=servduid, offset=0)
@@ -166,11 +202,11 @@ def dhcp6info_1():
             date = datetime.datetime(2000, 1, 1)
             date += datetime.timedelta(seconds=secs)
             res['duidtype'] = 'llt'
-            res['duidlladdr'] = duid[8:]
+            res['duidlladdr'] = duid[8:].hex()
             res['duiddate'] = date
         elif duidtype == 3:
             res['duidtype'] == 'll'
-            res['duidlladdr'] = duid[4:]
+            res['duidlladdr'] = duid[4:].hex()
         elif duidtype == 4:
             res['duidtype'] == 'uuid'
         else:
@@ -189,7 +225,82 @@ def dhcp6info_1():
     return None
 
 
-def dhcp6info():
+def dllimit(l, u):
+    h = (l + u) // 2
+    if l >= u:
+        return h
+    _h = str(ipaddress.IPv6Address(h))
+    if ping(_h):
+        return dllimit(l, h - 1)
+    for i in range(h - window, h + window + 1):
+        _i = str(ipaddress.IPv6Address(i))
+        if ping(_i):
+            return dllimit(l, i - 1)
+    return dllimit(h + 1, u)
+
+
+def dulimit(l, u):
+    h = (l + u) // 2
+    if l >= u:
+        return h
+    _h = str(ipaddress.IPv6Address(h))
+    if ping(_h):
+        return dulimit(h + 1, u)
+    for i in range(h - window, h + window + 1):
+        _i = str(ipaddress.IPv6Address(i))
+        if ping(_i):
+            return dulimit(i + 1, u)
+    return dulimit(l, h - 1)
+
+
+def ddelimit(addr):
+    _addr = int(ipaddress.IPv6Address(addr))
+    _l = _addr & 0xffffffffffffffff0000000000000000
+    _u = _l + 0xffffffffffffffff
+    return dllimit(_l, _addr), dulimit(_addr, _u)
+
+
+def rllimit(l, u, servduid):
+    h = (l + u) // 2
+    if l >= u:
+        return h
+    _h = str(ipaddress.IPv6Address(h))
+    if dhcp6rebind(_h, servduid) or ping(_h):
+        return rllimit(l, h - 1, servduid)
+    else:
+        return rllimit(h + 1, u, servduid)
+
+
+def rulimit(l, u, servduid):
+    h = (l + u) // 2
+    if l >= u:
+        return h
+    _h = str(ipaddress.IPv6Address(h))
+    if dhcp6rebind(_h, servduid) or ping(_h):
+        return rulimit(h + 1, u, servduid)
+    else:
+        return rulimit(l, h - 1, servduid)
+
+
+def rdelimit(addr, servduid):
+    _addr = int(ipaddress.IPv6Address(addr))
+    _l = _addr & 0xffffffffffffffff0000000000000000
+    _u = _l + 0xffffffffffffffff
+    return rllimit(_l, _addr, servduid), rulimit(_addr, _u, servduid)
+
+
+def sdelimit(addr, servduid):
+    _addr = int(ipaddress.IPv6Address(addr))
+    l, u = _addr, _addr
+    for _ in range(count):
+        addr = dhcp6solicit(servduid)
+        _addr = int(ipaddress.IPv6Address(addr))
+        l, u = min(l, _addr), max(u, _addr)
+    d = (l - u) // count
+    return l - d, u + d
+
+
+def dhcp6info(delimit=True):
     res = dhcp6info_1()
     if res is None:
         return None
@@ -202,36 +313,59 @@ def dhcp6info():
     _addr1 = int(ipaddress.IPv6Address(addr1))
     if _addr0 == _addr1 + 1 or _addr0 == _addr1:
         res['aat'] = 'linear'
-        return res
-    res['aat'] = 'random'
-    addr2 = str(ipaddress.IPv6Address(_addr0 - 1))
-    addr3 = str(ipaddress.IPv6Address(_addr0 + 1))
-    res2 = dhcp6rebind(addr2, servduidfilter=res['duid'])
-    res3 = dhcp6rebind(addr3, servduidfilter=res['duid'])
-    if res2 is True or res3 is True:
-        res['aat'] = 'random+rebind'
+    else:
+        res['aat'] = 'random'
+        addr2 = str(ipaddress.IPv6Address(_addr0 - 1))
+        addr3 = str(ipaddress.IPv6Address(_addr0 + 1))
+        res2 = dhcp6rebind(addr2, servduidfilter=res['duid'])
+        res3 = dhcp6rebind(addr3, servduidfilter=res['duid'])
+        if res2 is True or res3 is True:
+            res['aat'] = 'random+rebind'
+    if delimit:
+        limit = None
+        if force is None:
+            if res['aat'] == 'linear':
+                limit = ddelimit(res['solicited_address'])
+            elif res['aat'] == 'random+rebind':
+                limit = rdelimit(res['solicited_address'], res['duid'])
+            elif res['aat'] == 'random':
+                limit = sdelimit(res['solicited_address'], res['duid'])
+        elif force == 'ddelimit':
+            limit = ddelimit(res['solicited_address'])
+        elif force == 'rdelimit':
+            limit = rdelimit(res['solicited_address'], res['duid'])
+        elif force == 'sdelimit':
+            limit = sdelimit(res['solicited_address'], res['duid'])
+        if limit is not None:
+            res['limit'] = (str(ipaddress.IPv6Address(limit[0])),
+                            str(ipaddress.IPv6Address(limit[1])))
     return res
 
 
-def dehcp(res):
-    pass
+res = dhcp6info(not nodelimit)
 
+if res is None:
+    print('no dhcp6 server found')
+    sys.exit(1)
 
-def rdelimit(res):
-    pass
-
-
-def sdelimit(res):
-    pass
-
-
-def dhcp6info_ext():
-    res = dhcp6info()
-    aat = res['aat']
-    if aat == 'linear':
-        dehcp()
-    elif aat == 'random+rebind':
-        rdelimit()
-    elif aat == 'random':
-        sdelimit()
-    return res
+print(f'address: {res["address"]}')
+print(f'duid: {res["duid"].hex()}')
+print(f'duidtype: {res["duidtype"]}')
+if 'duiddate' in res:
+    print(f'duiddate: {res["duiddate"]}')
+if 'duidlladdr' in res:
+    print(f'duidlladdr: {res["duidlladdr"]}')
+print(f'T1: {res["T1"]}')
+print(f'T2: {res["T2"]}')
+print(f'validtime: {res["validtime"]}')
+print(f'preftime: {res["preftime"]}')
+if 'dns' in res:
+    for dns in res['dns']:
+        print(f'dns: {dns}')
+if 'domain' in res:
+    for domain in res['domain']:
+        print(f'domain: {domain}')
+if 'aat' in res:
+    print(f'aat: {res["aat"]}')
+if 'limit' in res:
+    print(f'limit: {res["limit"][0]} ~ {res["limit"][1]}')

@@ -1,5 +1,6 @@
 import struct
 import random
+import socket
 
 DHCP6SOL = 1
 DHCP6ADVERT = 2
@@ -55,7 +56,7 @@ def dhcp6parseopts(buf, offset):
     while cur < len(buf):
         opttype, optlen = struct.unpack_from('!HH', buffer=buf, offset=cur)
         cur += 4
-        optdata = buf[cur:cur+optlen]
+        optdata = buf[cur:cur + optlen]
         cur += optlen
         if opttype not in opts:
             opts[opttype] = []
@@ -117,6 +118,32 @@ def dhcp6build_optreq(reqs):
     for req in reqs:
         buf += struct.pack('!H', req)
     return buf
+
+
+def dhcp6parse_dns(buf):
+    res = []
+    cur = 0
+    while cur < len(buf):
+        res.append(socket.inet_ntop(socket.AF_INET6, buf[cur:cur+16]))
+        cur += 16
+    return res
+
+
+def dhcp6parse_domain(buf):
+    res = []
+    cur = 0
+    while cur < len(buf):
+        domain = ''
+        clen = buf[cur]
+        cur += 1
+        while clen != 0:
+            domain += buf[cur:cur+clen].decode()
+            domain += '.'
+            cur += clen
+            clen = buf[cur]
+            cur += 1
+        res.append(domain)
+    return res
 
 
 def dhcp6build_elapsedtime(time=0):

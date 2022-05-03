@@ -1,3 +1,5 @@
+import datetime
+import ipaddress
 import random
 import select
 import socket
@@ -7,7 +9,9 @@ import time
 from dhcp6lib import *
 import pyping
 
+verbose = True
 timeout = 0.1
+window = 3
 interface = None
 
 ICMP6_ECHO_REQUEST = 128
@@ -123,16 +127,15 @@ def dhcp6rebind(addr, servduidfilter=None):
     return None
 
 
-def dhcp6info():
-    duid = random.duid_ll()
+def dhcp6info_1():
+    duid = random_duid_ll()
     trid = random.getrandbits(24)
     iaid = random.getrandbits(32)
     opts = {}
     opts[DHCP6CLIENTID] = [duid]
     opts[DHCP6ELAPSEDTIME] = [dhcp6build_elapsedtime()]
     opts[DHCP6IANA] = [dhcp6build_iana(iaid, 0, 0, {})]
-    reqs = [DHCP6DNS, DHCP6DOMAIN, DHCP6SNTP, DHCP6FQDN]
-    opts[DHCP6OPTREQ] = [dhcp6build_optreq(reqs)]
+    opts[DHCP6OPTREQ] = [dhcp6build_optreq([DHCP6DNS, DHCP6DOMAIN])]
     buf = dhcp6build(DHCP6SOL, trid, opts)
     dhcp6fd.sendto(buf, ('ff02::1', 547))
     tend = time.time() + timeout
@@ -153,13 +156,82 @@ def dhcp6info():
         if riaid != iaid or DHCP6IAADDR not in ianaopts:
             tsel = tend - time.time()
             continue
-        addr, preftime, validtime, _ = dhcp6parse_iaaddr(ianaopts[DHCP6IAADDR][0])
+        addr, preftime, validtime, _ = dhcp6parse_iaaddr(
+            ianaopts[DHCP6IAADDR][0])
         res = {}
-        res['address'] = servep[0]
         res['duid'] = servduid
+        duidtype, = struct.unpack_from('!H', buffer=servduid, offset=0)
+        if duidtype == 1:
+            secs, = struct.unpack_from('!I', buffer=servduid, offset=4)
+            date = datetime.datetime(2000, 1, 1)
+            date += datetime.timedelta(seconds=secs)
+            res['duidtype'] = 'llt'
+            res['duidlladdr'] = duid[8:]
+            res['duiddate'] = date
+        elif duidtype == 3:
+            res['duidtype'] == 'll'
+            res['duidlladdr'] = duid[4:]
+        elif duidtype == 4:
+            res['duidtype'] == 'uuid'
+        else:
+            res['duidtype'] = 'unknown'
+        res['address'] = servep[0]
         res['T1'] = T1
-        res['T2'] = t2
+        res['T2'] = T2
         res['preftime'] = preftime
         res['validtime'] = validtime
+        if DHCP6DNS in opts:
+            res['dns'] = dhcp6parse_dns(opts[DHCP6DNS][0])
+        if DHCP6DOMAIN in opts:
+            res['domain'] = dhcp6parse_domain(opts[DHCP6DOMAIN][0])
+        res['solicited_address'] = addr
         return res
     return None
+
+
+def dhcp6info():
+    res = dhcp6info_1()
+    if res is None:
+        return None
+    res['aat'] = 'unknown'
+    addr0 = res['solicited_address']
+    addr1 = dhcp6solicit(servduidfilter=res['duid'])
+    if addr1 is None:
+        return res
+    _addr0 = int(ipaddress.IPv6Address(addr0))
+    _addr1 = int(ipaddress.IPv6Address(addr1))
+    if _addr0 == _addr1 + 1 or _addr0 == _addr1:
+        res['aat'] = 'linear'
+        return res
+    res['aat'] = 'random'
+    addr2 = str(ipaddress.IPv6Address(_addr0 - 1))
+    addr3 = str(ipaddress.IPv6Address(_addr0 + 1))
+    res2 = dhcp6rebind(addr2, servduidfilter=res['duid'])
+    res3 = dhcp6rebind(addr3, servduidfilter=res['duid'])
+    if res2 is True or res3 is True:
+        res['aat'] = 'random+rebind'
+    return res
+
+
+def dehcp(res):
+    pass
+
+
+def rdelimit(res):
+    pass
+
+
+def sdelimit(res):
+    pass
+
+
+def dhcp6info_ext():
+    res = dhcp6info()
+    aat = res['aat']
+    if aat == 'linear':
+        dehcp()
+    elif aat == 'random+rebind':
+        rdelimit()
+    elif aat == 'random':
+        sdelimit()
+    return res

@@ -89,6 +89,8 @@ def dhcp6solicit(servduidfilter=None):
     opts[DHCP6ELAPSEDTIME] = [dhcp6build_elapsedtime()]
     opts[DHCP6IANA] = [dhcp6build_iana(iaid, 0, 0, {})]
     buf = dhcp6build(DHCP6SOL, trid, opts)
+    if internal > 0:
+        time.sleep(internal)
     dhcp6fd.sendto(buf, ('ff02::1', 547))
     tend = time.time() + timeout
     tsel = timeout
@@ -130,6 +132,8 @@ def dhcp6rebind(addr, servduidfilter=None):
     ianaopts[DHCP6IAADDR] = [dhcp6build_iaaddr(addrbytes, 0, 0, {})]
     opts[DHCP6IANA] = [dhcp6build_iana(iaid, 0, 0, ianaopts)]
     buf = dhcp6build(DHCP6REBIND, trid, opts)
+    if internal > 0:
+        time.sleep(internal)
     dhcp6fd.sendto(buf, ('ff02::1', 547))
     tend = time.time() + timeout
     tsel = timeout

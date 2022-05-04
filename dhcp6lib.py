@@ -113,6 +113,10 @@ def dhcp6build_iaaddr(addr, preftime, validtime, subopts):
     return buf
 
 
+def dhcp6build_elapsedtime(time=0):
+    return struct.pack('!H', time)
+
+
 def dhcp6build_optreq(reqs):
     buf = b''
     for req in reqs:
@@ -146,8 +150,10 @@ def dhcp6parse_domain(buf):
     return res
 
 
-def dhcp6build_elapsedtime(time=0):
-    return struct.pack('!H', time)
+def dhcp6parse_vendorclass(buf):
+    num, = struct.unpack('!I', buf)
+    desc = buf[4:].decode()
+    return num, desc
 
 
 def duid_ll(mac):

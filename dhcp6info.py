@@ -68,7 +68,7 @@ def ping(addr):
             print(f'ping {addr}: success')
         return True
     if verbose:
-        pritn(f'ping {addr}: failed')
+        print(f'ping {addr}: failed')
     return False
 
 

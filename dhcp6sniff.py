@@ -38,7 +38,7 @@ try:
         duid text not null primary key,
         lla text not null,
         gua text not null,
-        vendorclass text
+        vendorclass text not null
         )
         ''')
     if verbose:
@@ -49,7 +49,7 @@ except:
 signal.signal(signal.SIGINT, lambda _no, _f: sys.exit(0))
 
 while True:
-    buf, ep = dhcp6fd.recvfrom(4096)
+    buf, lla = dhcp6fd.recvfrom(4096)
     msgtype, _, opts = dhcp6parse(buf)
     if msgtype != DHCP6RENEW or \
        DHCP6CLIENTID not in opts or \
@@ -61,13 +61,13 @@ while True:
         continue
     gua, _, _, _ = dhcp6parse_iaaddr(ianaopts[DHCP6IAADDR][0])
     duid = duid.hex()
-    lla = ep[0]
+    lla = lla[0]
     gua = socket.inet_ntop(socket.AF_INET6, gua)
     vendorclass = ''
     if DHCP6VENDORCLASS in opts:
         num, desc = dhcp6parse_vendorclass(opts[DHCP6VENDORCLASS][0])
         vendorclass = f'{num}: {desc}'
-    cur.execute(f'insert into host values (?,?,?,?)', (duid, lla, gua, vendorclass))
+    cur.execute(f'replace into host values (?,?,?,?)', (duid, lla, gua, vendorclass))
     conn.commit()
     if verbose:
         print(f'duid: {duid}')

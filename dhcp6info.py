@@ -237,6 +237,8 @@ def dllimit(l, u):
     if ping(_h):
         return dllimit(l, h - 1)
     for i in range(max(h - window, l), min(h + window + 1, u + 1)):
+        if i == h:
+            continue
         _i = str(ipaddress.IPv6Address(i))
         if ping(_i):
             return dllimit(l, i - 1)
@@ -251,6 +253,8 @@ def dulimit(l, u):
     if ping(_h):
         return dulimit(h + 1, u)
     for i in range(max(h - window, l), min(h + window + 1, u + 1)):
+        if i == h:
+            continue
         _i = str(ipaddress.IPv6Address(i))
         if ping(_i):
             return dulimit(i + 1, u)

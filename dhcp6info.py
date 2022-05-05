@@ -209,7 +209,7 @@ def dhcp6info_1():
             res['duidlladdr'] = duid[8:].hex()
             res['duiddate'] = date
         elif duidtype == 3:
-            res['duidtype'] == 'll'
+            res['duidtype'] = 'll'
             res['duidlladdr'] = duid[4:].hex()
         elif duidtype == 4:
             res['duidtype'] == 'uuid'

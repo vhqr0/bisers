@@ -67,7 +67,8 @@ while True:
     if DHCP6VENDORCLASS in opts:
         num, desc = dhcp6parse_vendorclass(opts[DHCP6VENDORCLASS][0])
         vendorclass = f'{num}: {desc}'
-    cur.execute(f'replace into host values (?,?,?,?)', (duid, lla, gua, vendorclass))
+    cur.execute(f'replace into host values (?,?,?,?)',
+                (duid, lla, gua, vendorclass))
     conn.commit()
     if verbose:
         print(f'duid: {duid}')

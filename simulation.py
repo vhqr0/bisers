@@ -123,7 +123,6 @@ def sdelimit():
         a = solicit()
         l, u = min(l, a), max(u, a)
     d = (u - l) // count
-    print(f'debug: {d}')
     return l - d, u + d
 
 

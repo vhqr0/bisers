@@ -56,7 +56,7 @@ while True:
        DHCP6IANA not in opts:
         continue
     duid = opts[DHCP6CLIENTID][0]
-    _, _, _, ianaopts = dhcp6parse_iana(opts[DHCP6IANA][0])
+    _, _, _, ianaopts = dhcp6parse_ia(opts[DHCP6IANA][0])
     if DHCP6IAADDR not in ianaopts:
         continue
     gua, _, _, _ = dhcp6parse_iaaddr(ianaopts[DHCP6IAADDR][0])

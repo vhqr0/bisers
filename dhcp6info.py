@@ -82,13 +82,22 @@ dhcp6fd.bind(('', 546))
 
 def dhcp6solicit(servduidfilter=None):
     duid = random_duid_ll()
-    trid = random.getrandbits(24)
-    iaid = random.getrandbits(32)
-    opts = {}
-    opts[DHCP6CLIENTID] = [duid]
-    opts[DHCP6ELAPSEDTIME] = [dhcp6build_elapsedtime()]
-    opts[DHCP6IANA] = [dhcp6build_iana(iaid, 0, 0, {})]
-    buf = dhcp6build(DHCP6SOL, trid, opts)
+    trid = random_trid()
+    iaid = random_iaid()
+    buf = dhcp6build_ext({
+        'msgtype': DHCP6SOL,
+        'trid': trid,
+        'opts': {
+            DHCP6CLIENTID: [duid],
+            DHCP6ELAPSEDTIME: [0],
+            DHCP6IANA: [{
+                'iaid': iaid,
+                'T1': 0,
+                'T2': 0,
+                'opts': {}
+            }]
+        }
+    })
     if internal > 0:
         time.sleep(internal)
     dhcp6fd.sendto(buf, ('ff02::1', 547))
@@ -99,18 +108,21 @@ def dhcp6solicit(servduidfilter=None):
         if len(rfds) == 0:
             break
         buf, _ = dhcp6fd.recvfrom(4096)
-        msgtype, rtrid, opts = dhcp6parse(buf)
-        if msgtype != DHCP6ADVERT or rtrid != trid or \
+        res = dhcp6parse_ext(buf)
+        opts = res['opts']
+        if res['msgtype'] != DHCP6ADVERT or \
+           res['trid'] != trid or \
            DHCP6SERVERID not in opts or \
            DHCP6IANA not in opts:
             tsel = tend - time.time()
             continue
         servduid = opts[DHCP6SERVERID][0]
-        riaid, _, _, ianaopts = dhcp6parse_iana(opts[DHCP6IANA][0])
-        if riaid != iaid or DHCP6IAADDR not in ianaopts or \
+        iana = opts[DHCP6IANA][0]
+        if iana['iaid'] != iaid or \
+           DHCP6IAADDR not in iana['opts'] or \
            servduidfilter is not None and servduidfilter != servduid:
             break
-        addr, _, _, _ = dhcp6parse_iaaddr(ianaopts[DHCP6IAADDR][0])
+        addr = iana['opts'][DHCP6IAADDR][0]['addr']
         addr = socket.inet_ntop(socket.AF_INET6, addr)
         if verbose:
             print(f'solicit: {addr}')
@@ -122,16 +134,30 @@ def dhcp6solicit(servduidfilter=None):
 
 def dhcp6rebind(addr, servduidfilter=None):
     duid = random_duid_ll()
-    trid = random.getrandbits(24)
-    iaid = random.getrandbits(32)
-    opts = {}
-    opts[DHCP6CLIENTID] = [duid]
-    opts[DHCP6ELAPSEDTIME] = [dhcp6build_elapsedtime()]
-    ianaopts = {}
+    trid = random_trid()
+    iaid = random_iaid()
     addrbytes = socket.inet_pton(socket.AF_INET6, addr)
-    ianaopts[DHCP6IAADDR] = [dhcp6build_iaaddr(addrbytes, 0, 0, {})]
-    opts[DHCP6IANA] = [dhcp6build_iana(iaid, 0, 0, ianaopts)]
-    buf = dhcp6build(DHCP6REBIND, trid, opts)
+    buf = dhcp6build_ext({
+        'msgtype': DHCP6REBIND,
+        'trid': trid,
+        'opts': {
+            DHCP6CLIENTID: [duid],
+            DHCP6ELAPSEDTIME: [0],
+            DHCP6IANA: [{
+                'iaid': iaid,
+                'T1': 0,
+                'T2': 0,
+                'opts': {
+                    DHCP6IAADDR: [{
+                        'addr': addrbytes,
+                        'preftime': 0,
+                        'validtime': 0,
+                        'opts': {}
+                    }]
+                }
+            }],
+        }
+    })
     if internal > 0:
         time.sleep(internal)
     dhcp6fd.sendto(buf, ('ff02::1', 547))
@@ -142,22 +168,24 @@ def dhcp6rebind(addr, servduidfilter=None):
         if len(rfds) == 0:
             break
         buf, servep = dhcp6fd.recvfrom(4096)
-        msgtype, rtrid, opts = dhcp6parse(buf)
-        if msgtype != DHCP6REPLY or rtrid != trid or \
+        res = dhcp6parse_ext(buf)
+        opts = res['opts']
+        if res['msgtype'] != DHCP6REPLY or \
+           res['trid'] != trid or \
            DHCP6SERVERID not in opts or \
            DHCP6IANA not in opts:
             tsel = tend - time.time()
             continue
         servduid = opts[DHCP6SERVERID][0]
-        riaid, T1, T2, ianaopts = \
-            dhcp6parse_iana(opts[DHCP6IANA][0])
-        if riaid != iaid or DHCP6IAADDR not in ianaopts or \
+        iana = opts[DHCP6IANA][0]
+        if iana['iaid'] != iaid or \
+           DHCP6IAADDR not in iana['opts'] or \
            servduidfilter is not None and servduidfilter != servduid:
             tsel = tend - time.time()
             continue
-        for iaaddr in ianaopts[DHCP6IAADDR]:
-            raddr, preftime, validtime, _ = dhcp6parse_iaaddr(iaaddr)
-            if raddr == addrbytes:
+        for i in iana['opts'][DHCP6IAADDR]:
+            if i['addr'] == addrbytes:
+                validtime = i['validtime']
                 if verbose:
                     print(f'rebind {addr}:'
                           f'{"success" if validtime > 0 else "failed"}')
@@ -168,14 +196,23 @@ def dhcp6rebind(addr, servduidfilter=None):
 
 def dhcp6info_1():
     duid = random_duid_ll()
-    trid = random.getrandbits(24)
-    iaid = random.getrandbits(32)
-    opts = {}
-    opts[DHCP6CLIENTID] = [duid]
-    opts[DHCP6ELAPSEDTIME] = [dhcp6build_elapsedtime()]
-    opts[DHCP6IANA] = [dhcp6build_iana(iaid, 0, 0, {})]
-    opts[DHCP6OPTREQ] = [dhcp6build_optreq([DHCP6DNS, DHCP6DOMAIN])]
-    buf = dhcp6build(DHCP6SOL, trid, opts)
+    trid = random_trid()
+    iaid = random_iaid()
+    buf = dhcp6build_ext({
+        'msgtype': DHCP6SOL,
+        'trid': trid,
+        'opts': {
+            DHCP6CLIENTID: [duid],
+            DHCP6ELAPSEDTIME: [0],
+            DHCP6IANA: [{
+                'iaid': iaid,
+                'T1': 0,
+                'T2': 0,
+                'opts': {}
+            }],
+            DHCP6OPTREQ: [[DHCP6DNS, DHCP6DOMAIN]]
+        }
+    })
     dhcp6fd.sendto(buf, ('ff02::1', 547))
     tend = time.time() + timeout
     tsel = timeout
@@ -184,21 +221,21 @@ def dhcp6info_1():
         if len(rfds) == 0:
             break
         buf, servep = dhcp6fd.recvfrom(4096)
-        msgtype, rtrid, opts = dhcp6parse(buf)
-        if msgtype != DHCP6ADVERT or rtrid != trid or \
+        res = dhcp6parse_ext(buf)
+        opts = res['opts']
+        if res['msgtype'] != DHCP6ADVERT or \
+           res['trid'] != trid or \
            DHCP6SERVERID not in opts or \
            DHCP6IANA not in opts:
             tsel = tend - time.time()
             continue
         servduid = opts[DHCP6SERVERID][0]
-        riaid, T1, T2, ianaopts = dhcp6parse_iana(opts[DHCP6IANA][0])
-        if riaid != iaid or DHCP6IAADDR not in ianaopts:
+        iana = opts[DHCP6IANA][0]
+        if iana['iaid'] != iaid or \
+           DHCP6IAADDR not in iana['opts']:
             tsel = tend - time.time()
             continue
-        addr, preftime, validtime, _ = dhcp6parse_iaaddr(
-            ianaopts[DHCP6IAADDR][0])
-        addr = socket.inet_ntop(socket.AF_INET6, addr)
-        res = {}
+        iaaddr = iana['opts'][DHCP6IAADDR][0]
         res['duid'] = servduid
         duidtype, = struct.unpack_from('!H', buffer=servduid, offset=0)
         if duidtype == 1:
@@ -206,25 +243,24 @@ def dhcp6info_1():
             date = datetime.datetime(2000, 1, 1)
             date += datetime.timedelta(seconds=secs)
             res['duidtype'] = 'llt'
-            res['duidlladdr'] = duid[8:].hex()
+            res['duidlladdr'] = servduid[8:].hex()
             res['duiddate'] = date
         elif duidtype == 3:
             res['duidtype'] = 'll'
-            res['duidlladdr'] = duid[4:].hex()
-        elif duidtype == 4:
-            res['duidtype'] == 'uuid'
+            res['duidlladdr'] = servduid[4:].hex()
         else:
             res['duidtype'] = 'unknown'
         res['address'] = servep[0]
-        res['T1'] = T1
-        res['T2'] = T2
-        res['preftime'] = preftime
-        res['validtime'] = validtime
+        res['T1'] = iana['T1']
+        res['T2'] = iana['T2']
+        res['preftime'] = iaaddr['preftime']
+        res['validtime'] = iaaddr['validtime']
         if DHCP6DNS in opts:
-            res['dns'] = dhcp6parse_dns(opts[DHCP6DNS][0])
+            res['dns'] = opts[DHCP6DNS][0]
         if DHCP6DOMAIN in opts:
-            res['domain'] = dhcp6parse_domain(opts[DHCP6DOMAIN][0])
-        res['solicited_address'] = addr
+            res['domain'] = opts[DHCP6DOMAIN][0]
+        res['solicited_address'] = socket.inet_ntop(socket.AF_INET6,
+                                                    iaaddr['addr'])
         return res
     return None
 

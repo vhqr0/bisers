@@ -125,7 +125,7 @@ def dhcp6parse_iaprefix(buf):
 
 
 def dhcp6parse_elapsedtime(buf):
-    return struct.unpack('!H', buf)
+    return struct.unpack('!H', buf)[0]
 
 
 def dhcp6parse_optreq(buf):

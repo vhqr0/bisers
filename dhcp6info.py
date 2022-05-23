@@ -16,6 +16,10 @@ parser.add_argument('-i', '--interface')
 parser.add_argument('-v', '--verbose', action='store_true', default=False)
 parser.add_argument('-T', '--timeout', type=float, default=0.1)
 parser.add_argument('-I', '--internal', type=float, default=0.0)
+parser.add_argument('-R', '--relay')
+parser.add_argument('-L', '--linkaddr')
+parser.add_argument('-P', '--peeraddr', default='fe80::1')
+parser.add_argument('-H', '--hopcount', type=int, default=0)
 parser.add_argument('-n', '--nodelimit', action='store_true', default=False)
 parser.add_argument('-d', action='store_const', dest='force', const='ddelimit')
 parser.add_argument('-r', action='store_const', dest='force', const='rdelimit')
@@ -28,6 +32,12 @@ interface = args.interface
 verbose = args.verbose
 timeout = args.timeout
 internal = args.internal
+relaydest = args.relay
+relaylinkaddr = args.linkaddr or relaydest
+if relaylinkaddr:
+    relaylinkaddr = socket.inet_pton(socket.AF_INET6, relaylinkaddr)
+relaypeeraddr = socket.inet_pton(socket.AF_INET6, args.peeraddr)
+relayhopcount = args.hopcount
 nodelimit = args.nodelimit
 force = args.force
 window = args.window
@@ -73,12 +83,18 @@ def ping(addr):
     return False
 
 
+lep = ('', 546)
+rep = ('ff02::1:2', 547)
+if relaydest:
+    lep = ('', 547)
+    rep = (relaydest, 547)
+
 dhcp6fd = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, 0)
 dhcp6fd.setblocking(False)
 if interface:
     dhcp6fd.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,
                        interface.encode())
-dhcp6fd.bind(('', 546))
+dhcp6fd.bind(lep)
 
 servduidfilter = None
 
@@ -87,7 +103,7 @@ def dhcp6solicit():
     duid = random_duid_ll()
     trid = random_trid()
     iaid = random_iaid()
-    buf = dhcp6build_ext({
+    res = {
         'msgtype': DHCP6SOL,
         'trid': trid,
         'opts': {
@@ -100,10 +116,18 @@ def dhcp6solicit():
                 'opts': {}
             }]
         }
-    })
+    }
+    if relaydest:
+        res['relay'] = {
+            'msgtype': DHCP6RELAYFORW,
+            'hopcount': relayhopcount,
+            'linkaddr': relaylinkaddr,
+            'peeraddr': relaypeeraddr
+        }
+    buf = dhcp6build_ext(res)
     if internal > 0:
         time.sleep(internal)
-    dhcp6fd.sendto(buf, ('ff02::1', 547))
+    dhcp6fd.sendto(buf, rep)
     tend = time.time() + timeout
     tsel = timeout
     while True:
@@ -138,7 +162,7 @@ def dhcp6rebind(addr):
     duid = random_duid_ll()
     trid = random_trid()
     iaid = random_iaid()
-    buf = dhcp6build_ext({
+    res = {
         'msgtype': DHCP6REBIND,
         'trid': trid,
         'opts': {
@@ -158,10 +182,18 @@ def dhcp6rebind(addr):
                 }
             }],
         }
-    })
+    }
+    if relaydest:
+        res['relay'] = {
+            'msgtype': DHCP6RELAYFORW,
+            'hopcount': relayhopcount,
+            'linkaddr': relaylinkaddr,
+            'peeraddr': relaypeeraddr
+        }
+    buf = dhcp6build_ext(res)
     if internal > 0:
         time.sleep(internal)
-    dhcp6fd.sendto(buf, ('ff02::1', 547))
+    dhcp6fd.sendto(buf, rep)
     tend = time.time() + timeout
     tsel = timeout
     while True:
@@ -199,7 +231,7 @@ def dhcp6info_1():
     duid = random_duid_ll()
     trid = random_trid()
     iaid = random_iaid()
-    buf = dhcp6build_ext({
+    res = {
         'msgtype': DHCP6SOL,
         'trid': trid,
         'opts': {
@@ -213,8 +245,16 @@ def dhcp6info_1():
             }],
             DHCP6OPTREQ: [[DHCP6DNS, DHCP6DOMAIN]]
         }
-    })
-    dhcp6fd.sendto(buf, ('ff02::1', 547))
+    }
+    if relaydest:
+        res['relay'] = {
+            'msgtype': DHCP6RELAYFORW,
+            'hopcount': relayhopcount,
+            'linkaddr': relaylinkaddr,
+            'peeraddr': relaypeeraddr
+        }
+    buf = dhcp6build_ext(res)
+    dhcp6fd.sendto(buf, rep)
     tend = time.time() + timeout
     tsel = timeout
     while True:

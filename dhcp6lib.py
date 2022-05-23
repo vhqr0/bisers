@@ -101,7 +101,8 @@ def dhcp6parse(buf):
 
 
 def dhcp6parse_relay(buf):
-    msgtype, hopcount, linkaddr, peeraddr = struct.unpack_from('!BB16s16s')
+    msgtype, hopcount, linkaddr, peeraddr = \
+        struct.unpack_from('!BB16s16s', buffer=buf, offset=0)
     opts = dhcp6parseopts(buf, 34)
     return msgtype, hopcount, linkaddr, peeraddr, opts
 
@@ -225,14 +226,14 @@ def dhcp6parseopts_ext(opts):
 def dhcp6parse_ext(buf):
     res = {}
     if buf[0] in (DHCP6RELAYFORW, DHCP6RELAYREPL):
-        msgtype, hopcount, linkaddr, peeraddr, opts = dhcp6parse_relay()
+        msgtype, hopcount, linkaddr, peeraddr, opts = dhcp6parse_relay(buf)
         res['relay'] = {
             'msgtype': msgtype,
             'hopcount': hopcount,
             'linkaddr': linkaddr,
             'peeraddr': peeraddr
         }
-        buf = opts[DHCP6RELAYMSG]
+        buf = opts[DHCP6RELAYMSG][0]
     msgtype, trid, opts = dhcp6parse(buf)
     res['msgtype'] = msgtype
     res['trid'] = trid
@@ -377,6 +378,6 @@ def dhcp6build_ext(res):
         hopcount = res['relay']['hopcount']
         linkaddr = res['relay']['linkaddr']
         peeraddr = res['relay']['peeraddr']
-        opts = {DHCP6RELAYMSG: buf}
+        opts = {DHCP6RELAYMSG: [buf]}
         buf = dhcp6build_relay(msgtype, hopcount, linkaddr, peeraddr, opts)
     return buf

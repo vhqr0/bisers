@@ -226,10 +226,12 @@ def dhcp6parse_ext(buf):
     res = {}
     if buf[0] in (DHCP6RELAYFORW, DHCP6RELAYREPL):
         msgtype, hopcount, linkaddr, peeraddr, opts = dhcp6parse_relay()
-        res['relay'] = msgtype
-        res['relayhopcount'] = hopcount
-        res['relaylinkaddr'] = linkaddr
-        res['relaypeeraddr'] = peeraddr
+        res['relay'] = {
+            'msgtype': msgtype,
+            'hopcount': hopcount,
+            'linkaddr': linkaddr,
+            'peeraddr': peeraddr
+        }
         buf = opts[DHCP6RELAYMSG]
     msgtype, trid, opts = dhcp6parse(buf)
     res['msgtype'] = msgtype
@@ -371,10 +373,10 @@ def dhcp6build_ext(res):
     opts = dhcp6buildopts_ext(res['opts'])
     buf = dhcp6build(msgtype, trid, opts)
     if 'relay' in res:
-        msgtype = res['relay']
-        hopcount = res['relayhopcount']
-        linkaddr = res['relaylinkaddr']
-        peeraddr = res['relaypeeraddr']
+        msgtype = res['relay']['msgtype']
+        hopcount = res['relay']['hopcount']
+        linkaddr = res['relay']['linkaddr']
+        peeraddr = res['relay']['peeraddr']
         opts = {DHCP6RELAYMSG: buf}
         buf = dhcp6build_relay(msgtype, hopcount, linkaddr, peeraddr, opts)
     return buf

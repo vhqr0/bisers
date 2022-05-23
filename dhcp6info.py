@@ -79,8 +79,10 @@ if interface:
                        interface.encode())
 dhcp6fd.bind(('', 546))
 
+servduidfilter = None
 
-def dhcp6solicit(servduidfilter=None):
+
+def dhcp6solicit():
     duid = random_duid_ll()
     trid = random_trid()
     iaid = random_iaid()
@@ -132,7 +134,7 @@ def dhcp6solicit(servduidfilter=None):
     return None
 
 
-def dhcp6rebind(addr, servduidfilter=None):
+def dhcp6rebind(addr):
     duid = random_duid_ll()
     trid = random_trid()
     iaid = random_iaid()
@@ -309,7 +311,7 @@ def rllimit(l, u, servduid):
     if l >= u:
         return h
     _h = str(ipaddress.IPv6Address(h))
-    if dhcp6rebind(_h, servduid) or ping(_h):
+    if dhcp6rebind(_h) or ping(_h):
         return rllimit(l, h - 1, servduid)
     else:
         return rllimit(h + 1, u, servduid)
@@ -320,7 +322,7 @@ def rulimit(l, u, servduid):
     if l >= u:
         return h
     _h = str(ipaddress.IPv6Address(h))
-    if dhcp6rebind(_h, servduid) or ping(_h):
+    if dhcp6rebind(_h) or ping(_h):
         return rulimit(h + 1, u, servduid)
     else:
         return rulimit(l, h - 1, servduid)
@@ -337,7 +339,7 @@ def sdelimit(addr, servduid):
     _addr = int(ipaddress.IPv6Address(addr))
     l, u = _addr, _addr
     for _ in range(count):
-        addr = dhcp6solicit(servduid)
+        addr = dhcp6solicit()
         _addr = int(ipaddress.IPv6Address(addr))
         l, u = min(l, _addr), max(u, _addr)
     d = (l - u) // count
@@ -346,11 +348,12 @@ def sdelimit(addr, servduid):
 
 def dhcp6info(delimit=True):
     res = dhcp6info_1()
+    servduidfilter = res['duid']
     if res is None:
         return None
     res['aat'] = 'unknown'
     addr0 = res['solicited_address']
-    addr1 = dhcp6solicit(servduidfilter=res['duid'])
+    addr1 = dhcp6solicit()
     if addr1 is None:
         return res
     _addr0 = int(ipaddress.IPv6Address(addr0))
@@ -361,8 +364,8 @@ def dhcp6info(delimit=True):
         res['aat'] = 'random'
         addr2 = str(ipaddress.IPv6Address(_addr0 - 1))
         addr3 = str(ipaddress.IPv6Address(_addr0 + 1))
-        res2 = dhcp6rebind(addr2, servduidfilter=res['duid'])
-        res3 = dhcp6rebind(addr3, servduidfilter=res['duid'])
+        res2 = dhcp6rebind(addr2)
+        res3 = dhcp6rebind(addr3)
         if res2 is True or res3 is True:
             res['aat'] = 'random+rebind'
     if delimit:

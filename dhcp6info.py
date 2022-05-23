@@ -99,7 +99,7 @@ dhcp6fd.bind(lep)
 servduidfilter = None
 
 
-def dhcp6solicit():
+def dhcp6solicit(rapidcommit=False):
     duid = random_duid_ll()
     trid = random_trid()
     iaid = random_iaid()
@@ -117,6 +117,8 @@ def dhcp6solicit():
             }]
         }
     }
+    if rapidcommit:
+        res['opts'][DHCP6RAPIDCOMMIT] = [b'']
     if relaydest:
         res['relay'] = {
             'msgtype': DHCP6RELAYFORW,
@@ -137,7 +139,8 @@ def dhcp6solicit():
         buf, _ = dhcp6fd.recvfrom(4096)
         res = dhcp6parse_ext(buf)
         opts = res['opts']
-        if res['msgtype'] != DHCP6ADVERT or \
+        msgtype = DHCP6REPLY if rapidcommit else DHCP6ADVERT
+        if res['msgtype'] != msgtype or \
            res['trid'] != trid or \
            DHCP6SERVERID not in opts or \
            DHCP6IANA not in opts:
@@ -308,6 +311,14 @@ def dhcp6info_1():
     return None
 
 
+def dhcp6info_rc(res):
+    if dhcp6solicit(True):
+        res['rc'] = True
+    else:
+        res['rc'] = False
+    return res
+
+
 def dllimit(l, u):
     h = (l + u) // 2
     if l >= u:
@@ -389,6 +400,7 @@ def sdelimit(addr):
 
 def dhcp6info(delimit=True):
     res = dhcp6info_1()
+    res = dhcp6info_rc(res)
     if res is None:
         return None
     servduidfilter = res['duid']
@@ -461,6 +473,8 @@ if 'domain' in res:
     for domain in res['domain']:
         print(f' \_{domain}')
 print('capability:')
+if 'rc' in res:
+    print(f' \_rapidcommit: {res["rc"]}')
 if 'aat' in res:
     print(f' \_aat: {res["aat"]}')
 if 'rebind' in res:

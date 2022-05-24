@@ -83,11 +83,9 @@ def ping(addr):
     return False
 
 
-lep = ('', 546)
-rep = ('ff02::1:2', 547)
+lep, rep = ('', 546), ('ff02::1:2', 547)
 if relaydest:
-    lep = ('', 547)
-    rep = (relaydest, 547)
+    lep, rep = ('', 547), (relaydest, 547)
 
 dhcp6fd = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, 0)
 dhcp6fd.setblocking(False)
@@ -230,7 +228,67 @@ def dhcp6rebind(addr):
     return None
 
 
+def dhcp6leasequery(addr):
+    duid = random_duid_ll()
+    trid = random_trid()
+    iaid = random_iaid()
+    res = {
+        'msgtype': DHCP6LEASEQUERY,
+        'trid': trid,
+        'opts': {
+            DHCP6CLIENTID: [duid],
+            DHCP6SERVERID: [servduidfilter],
+            DHCP6LQQUERY: [{
+                'querytype': DHCP6QUERYBYADDR,
+                'linkaddr': addr,
+                'opts': {
+                    DHCP6IAADDR: [{
+                        'addr': addr,
+                        'preftime': 0,
+                        'validtime': 0,
+                        'opts': {}
+                    }]
+                }
+            }]
+        }
+    }
+    if relaydest:
+        res['relay'] = {
+            'msgtype': DHCP6RELAYFORW,
+            'hopcount': relayhopcount,
+            'linkaddr': relaylinkaddr,
+            'peeraddr': relaypeeraddr
+        }
+    buf = dhcp6build_ext(res)
+    if internal > 0:
+        time.sleep(internal)
+    dhcp6fd.sendto(buf, rep)
+    tend = time.time() + timeout
+    tsel = timeout
+    while True:
+        rfds = select.select([dhcp6fd], [], [], tsel)[0]
+        if len(rfds) == 0:
+            break
+        buf, servep = dhcp6fd.recvfrom(4096)
+        res = dhcp6parse_ext(buf)
+        opts = res['opts']
+        if res['msgtype'] != DHCP6LEASEQUERYREPL or \
+           res['trid'] != trid or \
+           DHCP6SERVERID not in opts or \
+           DHCP6LQCLIENTDATA not in opts:
+            tsel = tend - time.time()
+            continue
+        servduid = opts[DHCP6CLIENTID][0]
+        clientdata = opts[DHCP6LQCLIENTDATA][0]
+        if servduidfilter is not None and servduidfilter != servduid:
+            tsel = tend - time.time()
+            continue
+        return DHCP6CLIENTID in clientdata
+    return None
+
+
 def dhcp6info_1():
+    global servduidfilter
     duid = random_duid_ll()
     trid = random_trid()
     iaid = random_iaid()
@@ -283,6 +341,7 @@ def dhcp6info_1():
         # address
         res['address'] = servep[0]
         # duid
+        servduidfilter = servduid
         res['duid'] = servduid
         duidtype, = struct.unpack_from('!H', buffer=servduid, offset=0)
         if duidtype == 1:
@@ -311,11 +370,24 @@ def dhcp6info_1():
     return None
 
 
-def dhcp6info_rc(res):
-    if dhcp6solicit(True):
-        res['rc'] = True
+def dhcp6info_cap(res):
+    _iaaddr = int.from_bytes(res['iaaddr'], byteorder='big')
+    addr0 = (_iaaddr - 1).to_bytes(16, byteorder='big')
+    addr1 = (_iaaddr + 1).to_bytes(16, byteorder='big')
+    res['rebind'] = dhcp6rebind(addr0) or dhcp6rebind(addr1)
+    res['rc'] = dhcp6solicit(True) is not None
+    res['lq'] = dhcp6leasequery(res['iaaddr']) is not None
+    addr0 = dhcp6solicit()
+    addr1 = dhcp6solicit()
+    if addr0 is None or addr1 is None:
+        res['aat'] = 'unknown'
     else:
-        res['rc'] = False
+        _addr0 = int.from_bytes(addr0, byteorder='big')
+        _addr1 = int.from_bytes(addr1, byteorder='big')
+        if _addr0 == _addr1 + 1 or _addr0 == _addr1 - 1:
+            res['aat'] = 'linear'
+        else:
+            res['aat'] = 'random'
     return res
 
 
@@ -400,28 +472,9 @@ def sdelimit(addr):
 
 def dhcp6info(delimit=True):
     res = dhcp6info_1()
-    res = dhcp6info_rc(res)
     if res is None:
         return None
-    servduidfilter = res['duid']
-    # aat
-    res['aat'] = 'unknown'
-    addr0 = res['iaaddr']
-    addr1 = dhcp6solicit()
-    if addr1 is None:
-        return res
-    _addr0 = int.from_bytes(addr0, byteorder='big')
-    _addr1 = int.from_bytes(addr1, byteorder='big')
-    if _addr0 == _addr1 + 1 or _addr0 == _addr1 - 1:
-        res['aat'] = 'linear'
-    else:
-        res['aat'] = 'random'
-    _addr2 = (_addr0 - 1).to_bytes(16, byteorder='big')
-    _addr3 = (_addr0 + 1).to_bytes(16, byteorder='big')
-    if dhcp6rebind(_addr2) or dhcp6rebind(_addr3):
-        res['rebind'] = True
-    else:
-        res['rebind'] = False
+    res = dhcp6info_cap(res)
     if delimit:
         limit = None
         iaaddr = res['iaaddr']
@@ -475,6 +528,8 @@ if 'domain' in res:
 print('capability:')
 if 'rc' in res:
     print(f' \_rapidcommit: {res["rc"]}')
+if 'lq' in res:
+    print(f' \_leasequery: {res["lq"]}')
 if 'aat' in res:
     print(f' \_aat: {res["aat"]}')
 if 'rebind' in res:

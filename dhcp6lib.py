@@ -16,6 +16,8 @@ DHCP6RECONF = 10
 DHCP6INFOREQ = 11
 DHCP6RELAYFORW = 12
 DHCP6RELAYREPL = 13
+DHCP6LEASEQUERY = 14
+DHCP6LEASEQUERYREPL = 15
 
 DHCP6CLIENTID = 1
 DHCP6SERVERID = 2
@@ -42,6 +44,11 @@ DHCP6IAPD = 25
 DHCP6IAPREFIX = 26
 DHCP6SNTP = 31
 DHCP6FQDN = 39
+DHCP6LQQUERY = 44
+DHCP6LQCLIENTDATA = 45
+DHCP6LQCLTTIME = 46
+DHCP6LQRELAYDATA = 47
+DHCP6LQCLIENTLINK = 48
 
 DHCP6SUCCESS = 0
 DHCP6UNSPECFAIL = 1
@@ -49,6 +56,9 @@ DHCP6NOADDRSAVAIL = 2
 DHCP6NOBINDING = 3
 DHCP6NOTONLINK = 4
 DHCP6USEMULTICAST = 5
+
+DHCP6QUERYBYADDR = 1
+DHCP6QUERYBYCLIENTID = 2
 
 
 def duid_ll(mac):
@@ -165,6 +175,16 @@ def dhcp6parse_vendorclass(buf):
     return num, desc
 
 
+def dhcp6parse_lqquery(buf):
+    querytype, linkaddr = struct.unpack_from('!B16s', buffer=buf, offset=0)
+    subopts = dhcp6parseopts(buf, 17)
+    return querytype, linkaddr, subopts
+
+
+def dhcp6parse_lqclientdata(buf):
+    return dhcp6parseopts(buf, 0)
+
+
 def dhcp6parseopts_ext(opts):
     for k, v in opts.items():
         if k in (DHCP6IANA, DHCP6IATA, DHCP6IAPD):
@@ -220,6 +240,19 @@ def dhcp6parseopts_ext(opts):
             for i in v:
                 num, desc = dhcp6parse_vendorclass(i)
                 opts[k].append({'num': num, 'desc': desc})
+        elif k == DHCP6LQQUERY:
+            opts[k] = []
+            for i in v:
+                querytype, linkaddr, subopts = dhcp6parse_lqquery(i)
+                opts[k].append({
+                    'querytype': querytype,
+                    'linkaddr': linkaddr,
+                    'opts': dhcp6parseopts_ext(subopts)
+                })
+        elif k == DHCP6LQCLIENTDATA:
+            opts[k] = []
+            for i in v:
+                opts[k].append(dhcp6parseopts_ext(i))
     return opts
 
 
@@ -318,6 +351,16 @@ def dhcp6build_vendorclass(num, desc):
     return buf
 
 
+def dhcp6build_lqquery(querytype, linkaddr, subopts):
+    buf = struct.pack('!B16s', querytype, linkaddr)
+    buf += dhcp6buildopts(subopts)
+    return buf
+
+
+def dhcp6build_lqclientdata(subopts):
+    return dhcp6buildopts(subopts)
+
+
 def dhcp6buildopts_ext(opts):
     for k, v in opts.items():
         if k in (DHCP6IANA, DHCP6IATA, DHCP6IAPD):
@@ -365,6 +408,17 @@ def dhcp6buildopts_ext(opts):
             opts[k] = []
             for i in v:
                 opts[k].append(dhcp6build_vendorclass(i['num'], i['desc']))
+        elif k == DHCP6LQQUERY:
+            opts[k] = []
+            for i in v:
+                opts[k].append(
+                    dhcp6build_lqquery(querytype=i['querytype'],
+                                       linkaddr=i['linkaddr'],
+                                       subopts=dhcp6buildopts_ext(i['opts'])))
+        elif k == DHCP6LQCLIENTDATA:
+            opts[k] = []
+            for i in v:
+                opts[k].append(dhcp6build_lqclientdata(i))
     return opts
 
 

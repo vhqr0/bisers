@@ -9,7 +9,7 @@ import sys
 import time
 
 from dhcp6lib import *
-import pyping
+from icmp6filter import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--interface')
@@ -43,21 +43,21 @@ force = args.force
 window = args.window
 count = args.count
 
-ICMP6_ECHO_REQUEST = 128
-ICMP6_ECHO_REPLY = 129
-
 pingfd = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_ICMPV6)
 pingfd.setblocking(False)
 if interface:
     pingfd.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,
                       interface.encode())
-pyping.filter_icmp6(pingfd.fileno(), ICMP6_ECHO_REPLY)
+icmp6f = ICMP6Filter()
+icmp6f.setblockall()
+icmp6f.setpass(ICMP6_ECHOREP)
+icmp6f.setsockopt(pingfd)
 
 
 def ping(addr):
     addr = socket.inet_ntop(socket.AF_INET6, addr)
     seq = random.getrandbits(16)
-    buf = struct.pack('!BBHIQ', ICMP6_ECHO_REQUEST, 0, 0, seq, 0)
+    buf = struct.pack('!BBHIQ', ICMP6_ECHOREQ, 0, 0, seq, 0)
     try:
         pingfd.sendto(buf, (addr, 0))
     except OSError:

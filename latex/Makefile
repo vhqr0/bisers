@@ -1,2 +1,2 @@
-main_cn.pdf: main_cn.tex cites.bib
-	xelatex main_cn.tex
+main.pdf: main.tex
+	latexmk -pdf main.tex

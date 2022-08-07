@@ -1,6 +1,8 @@
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
 \usepackage{cite}
+\usepackage[strings]{underscore}
+\usepackage{stfloats}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{algorithm}
 \usepackage{algorithmic}
@@ -122,16 +124,15 @@ on mathematical statistics, which is not as accurate as the former but
 is generally effective. Combining these three algorithms, we propose a
 perfect DHCPv6 bounding solution: Bisers (Binary Search \& Rebound \&
 Solicit), which selects different bounding algorithms for servers with
-different features. Figure \ref{figBisers} shows the process of the
+different features. Fig~\ref{figBisers} shows the process of the
 Bisers, divided into three phases: server discovery, server feature
 detection, and bounding. We will describe the Bisers in more detail
 later.
 
-\begin{figure}[htbp]
+\begin{figure}[tbp]
+  \centerline{\includegraphics[scale=0.4]{bisers.pdf}}
   \caption{Bisers}
   \label{figBisers}
-  \centering
-  \includegraphics[scale=0.4]{bisers.pdf} \\
 \end{figure}
 
 We introduced Bisers' reference implementation on Linux:
@@ -142,19 +143,19 @@ https://github.com/vhqr0/bisers.
 The DHCPv6 client communicates with the server through
 multicast-unicast, using the DUID specified server when
 necessary. DHCPv6 centralizes the management of multiple links to a
-single server through a relay mechanism, with one relay at each
-link. These relays behave like servers, but instead of processing
-requests directly, they encapsulate the request as a relay message
-agent to the server or higher. Relay messages contain a link address
-field from which the server judges the client's link and
-responds. Figure \ref{figRelay} shows the client requesting an address
+single server through a relay mechanism \cite{carney_dynamic_2003}
+\cite{mrugalski_dynamic_2018}, with one relay at each link. These
+relays behave like servers, but instead of processing requests
+directly, they encapsulate the request as a relay message agent to the
+server or higher. Relay messages contain a link address field from
+which the server judges the client's link and
+responds. Fig~\ref{figRelay} shows the client requesting an address
 from the server through two different modes of communication.
 
-\begin{figure}[htbp]
+\begin{figure}[tbp]
+  \centerline{\includegraphics[scale=0.3]{relay.pdf}}
   \caption{Two modes of communication}
   \label{figRelay}
-  \centering
-  \includegraphics[scale=0.3]{relay.pdf} \\
 \end{figure}
 
 The client discovers the server through the Solicit-Advertise process,
@@ -194,7 +195,7 @@ server or relay can be accessed in the usual way. Otherwise, the
 target server needs to be accessed by the relay, and the user needs to
 provide the target link and the target server or relay.
 
-Figure \ref{figRelay2} shows how to access the target server through a
+Fig~\ref{figRelay2} shows how to access the target server through a
 relay: the attacker mimics a DHCPv6 relay that encapsulates the
 request in a relay message to the target server or an accessible
 relay, with the link address field of the relay message as the target
@@ -202,11 +203,10 @@ link. The request is then surrogate to the target server, which
 response based on the link address field and eventually returns the
 response to the attacker similarly.
 
-\begin{figure}[htbp]
+\begin{figure}[tbp]
+  \centerline{\includegraphics[scale=0.33]{relay2.pdf}}
   \caption{Illegal access to DHCPv6 Server}
   \label{figRelay2}
-  \centering
-  \includegraphics[scale=0.35]{relay2.pdf} \\
 \end{figure}
 
 Suppose the user's local and target links are on the same site. In
@@ -244,8 +244,17 @@ otherwise Rebind $a1-1$ and $a1+1$, and if successful, select RDeHCP
 or SDeHCP.
 
 At this phase, we can also detect other features of the target server,
-such as the DNS server, Rapid Commit, and support for Lease
-Query. This additional information can be used as an extension of the
+such as:
+
+\begin{itemize}
+\item DUID, which can track a device across the network
+  \cite{tront_security_2011} \cite{noauthor_what_nodate}.
+\item Support for Rapid Commit, which may be under DOS attack
+  \cite{carney_dynamic_2003} \cite{mrugalski_dynamic_2018}.
+\item Support for Lease Query, which may leak more information \cite{zeng_dhcpv6_2007}.
+\end{itemize}
+
+These additional information can be used as an extension of the
 specific implementation of Bisers.
 
 \subsection{DHCPv6 Bounding}
@@ -276,7 +285,7 @@ get RDeHCP (Algorithm \ref{algoRDeHCP}).
     \STATE if a $\ge$ b then return host
     \STATE if PingOrRebind(host) then return RDeHCP(a, host-1, w)
     \STATE for h in host-w ... host+w:
-    \STATE \ \ if Ping(h) then return RDeHCP(a, h-1, w)
+    \STATE \ \ if PingOrRebind(h) then return RDeHCP(a, h-1, w)
     \STATE return RDeHCP(host+1, b, w)
   \end{algorithmic}
 \end{algorithm}
@@ -337,7 +346,7 @@ at 32, 64, 128, and 256 requests, as shown in Table
 for three algorithms: DeHCP window size 4, RDeHCP window size 0, and
 SDeHCP request times 128.
 
-\begin{table}[htbp]
+\begin{table*}[htbp]
   \caption{DeHCP}
   \label{tabDeHCP}
   \centering
@@ -351,9 +360,9 @@ SDeHCP request times 128.
     4 & 99.8\% & 99.7\% & 98.7\% \\
     \hline
   \end{tabular}
-\end{table}
+\end{table*}
 
-\begin{table}[htbp]
+\begin{table*}[htbp]
   \caption{SDeHCP}
   \label{tabSDeHCP}
   \centering
@@ -364,22 +373,23 @@ SDeHCP request times 128.
     Accuracy & 96.34\% & 97.93\% & 98.97\% & 99.49\% \\
     \hline
   \end{tabular}
-\end{table}
+\end{table*}
 
 We selected several mainstream DHCPv6 implementations for testing:
 TP-Link routers (TL-XDR1860), Cisco routers (IOS 7200), Openwrt soft
 routers (19.07), ISC DHCP Server (4.4.1), and Windows DHCP Server
-2016, covering home routers, commercial routers, soft routers, and
-software implementations. We summarize the features of each of these
-implementations before testing the accuracy of one of the Bisers'
-implementations on these servers, such as whether to support relay,
-address allocation strategy, how to handle Rebind requests and default
-address pool size. We tried to use the default parameters during
-testing when configuring the server. Manual configuration of a 24-bit
-address pool if required. Request and discard 1000 addresses before
-testing. Test results are shown in Table \ref{tabDHCPv6Server}.
+(Windows Server 2016), covering home routers, commercial routers, soft
+routers, and software implementations. We summarize the features of
+each of these implementations before testing the accuracy of one of
+the Bisers' implementations on these servers, such as whether to
+support relay, address allocation strategy, how to handle Rebind
+requests and default address pool size. We tried to use the default
+parameters during testing when configuring the server. Manual
+configuration of a 24-bit address pool if required. Request and
+discard 1000 addresses before testing. Test results are shown in Table
+\ref{tabDHCPv6Server}.
 
-\begin{table}[htbp]
+\begin{table*}[htbp]
   \caption{Mainstream DHCPv6 Implementations Test Results}
   \label{tabDHCPv6Server}
   \centering
@@ -394,7 +404,7 @@ testing. Test results are shown in Table \ref{tabDHCPv6Server}.
     Accuracy & 100\% & 99.2\% & 96.9\% & 99.1\% & 100\% \\
     \hline
   \end{tabular}
-\end{table}
+\end{table*}
 
 Based on our results, we believe the Bisers solution is accurate for
 these DHCPv6 implementations. TP-Link routers are significantly
@@ -414,12 +424,19 @@ administrator.
 \section{Security Advise}
 
 To prevent detection attacks like Bisers, we recommend two things from
-a network administrator's perspective: 1. Establish strict firewall
-rules and access policies to limit illegal access to DHCPv6
-servers. 2. When configuring an address pool for a DHCPv6 server, the
-administrator should configure an address pool for the DHCPv6 server
-that is too large to scan based on the address pool range known to the
-attacker.
+a network administrator's perspective:
+
+\begin{itemize}
+\item To restrict illegal access to the DHCPv6 server, administrators
+  should set strict firewall policies to restrict external access to
+  the DHCPv6 server. Internally, a link layer filtering mechanism
+  similar to DHCPv6 Shield \cite{gont_dhcpv6-shield_2015} or DHCPv6
+  Guard \cite{noauthor_guard_nodate}, should be used to inspect DHCPv6
+  relay packets.
+\item When configuring an address pool for a DHCPv6 server,
+  administrators should configure an address pool that is too large to
+  scan based on the address pool range known to the attacker.
+\end{itemize}
 
 \section{Conclusions}
 

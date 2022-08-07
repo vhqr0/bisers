@@ -37,6 +37,18 @@
   \IEEEauthorblockA{\textit{Information Engineering University} \\
     Zhengzhou, China \\
     liancheng17@aliyun.com}
+  \and
+  \IEEEauthorblockN{5\textsuperscript{th} Hongtao Zhang}
+  \IEEEauthorblockA{\textit{School of Cyber Science and Engineering} \\
+    \textit{Zhengzhou University}\\
+    Zhengzhou, China \\
+    email address or ORCID}
+  \and
+  \IEEEauthorblockN{6\textsuperscript{th} Mengfan Liu}
+  \IEEEauthorblockA{\textit{School of Cyber Science and Engineering} \\
+    \textit{Zhengzhou University}\\
+    Zhengzhou, China \\
+    mengfan.liu@gs.zzu.edu.cn}
 }
 
 \maketitle
@@ -129,7 +141,7 @@ Bisers, divided into three phases: server discovery, server feature
 detection, and bounding. We will describe the Bisers in more detail
 later.
 
-\begin{figure}[tbp]
+\begin{figure}[htbp]
   \centerline{\includegraphics[scale=0.4]{bisers.pdf}}
   \caption{Bisers}
   \label{figBisers}
@@ -152,7 +164,7 @@ which the server judges the client's link and
 responds. Fig~\ref{figRelay} shows the client requesting an address
 from the server through two different modes of communication.
 
-\begin{figure}[tbp]
+\begin{figure}[htbp]
   \centerline{\includegraphics[scale=0.3]{relay.pdf}}
   \caption{Two modes of communication}
   \label{figRelay}
@@ -203,7 +215,7 @@ link. The request is then surrogate to the target server, which
 response based on the link address field and eventually returns the
 response to the attacker similarly.
 
-\begin{figure}[tbp]
+\begin{figure}[htbp]
   \centerline{\includegraphics[scale=0.33]{relay2.pdf}}
   \caption{Illegal access to DHCPv6 Server}
   \label{figRelay2}
@@ -346,7 +358,7 @@ at 32, 64, 128, and 256 requests, as shown in Table
 for three algorithms: DeHCP window size 4, RDeHCP window size 0, and
 SDeHCP request times 128.
 
-\begin{table*}[htbp]
+\begin{table}[htbp]
   \caption{DeHCP experiment result.}
   \begin{center}
     \centering
@@ -364,9 +376,9 @@ SDeHCP request times 128.
     \end{tabular}
     \label{tabDeHCP}
   \end{center}
-\end{table*}
+\end{table}
 
-\begin{table*}[htbp]
+\begin{table}[htbp]
   \caption{SDeHCP experiment result.}
   \begin{center}
     \begin{tabular}{|c|c|c|c|c|}
@@ -378,7 +390,7 @@ SDeHCP request times 128.
     \end{tabular}
     \label{tabSDeHCP}
   \end{center}
-\end{table*}
+\end{table}
 
 We selected several mainstream DHCPv6 implementations for testing:
 TP-Link routers (TL-XDR1860), Cisco routers (IOS 7200), Openwrt soft
@@ -394,7 +406,7 @@ configuration of a 24-bit address pool if required. Request and
 discard 1000 addresses before testing. Test results are shown in Table
 \ref{tabDHCPv6Server}.
 
-\begin{table*}[htbp]
+\begin{table*}[b]
   \caption{Mainstream DHCPv6 implementations test results.}
   \begin{center}
     \begin{tabular}{|c|c|c|c|c|c|}

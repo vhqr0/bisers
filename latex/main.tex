@@ -42,7 +42,7 @@
   \IEEEauthorblockA{\textit{School of Cyber Science and Engineering} \\
     \textit{Zhengzhou University}\\
     Zhengzhou, China \\
-    email address or ORCID}
+    zhanght@zzu.edu.cn}
   \and
   \IEEEauthorblockN{6\textsuperscript{th} Mengfan Liu}
   \IEEEauthorblockA{\textit{School of Cyber Science and Engineering} \\
@@ -142,7 +142,7 @@ detection, and bounding. We will describe the Bisers in more detail
 later.
 
 \begin{figure}[htbp]
-  \centerline{\includegraphics[scale=0.4]{bisers.pdf}}
+  \centerline{\includegraphics[scale=0.5]{bisers.png}}
   \caption{Bisers}
   \label{figBisers}
 \end{figure}
@@ -165,7 +165,7 @@ responds. Fig~\ref{figRelay} shows the client requesting an address
 from the server through two different modes of communication.
 
 \begin{figure}[htbp]
-  \centerline{\includegraphics[scale=0.3]{relay.pdf}}
+  \centerline{\includegraphics[scale=0.4]{relay.png}}
   \caption{Two modes of communication}
   \label{figRelay}
 \end{figure}
@@ -216,7 +216,7 @@ response based on the link address field and eventually returns the
 response to the attacker similarly.
 
 \begin{figure}[htbp]
-  \centerline{\includegraphics[scale=0.33]{relay2.pdf}}
+  \centerline{\includegraphics[scale=0.4]{relay2.png}}
   \caption{Illegal access to DHCPv6 Server}
   \label{figRelay2}
 \end{figure}
@@ -362,18 +362,20 @@ SDeHCP request times 128.
   \caption{DeHCP experiment result.}
   \begin{center}
     \centering
-    \begin{tabular}{|c|c|c|c|}
-      \hline
-      \textbf{Windows Size} & \multicolumn{3}{|c|}{\textbf{Offline Ratio}} \\
-      \cline{2-4}
-                            & 30\% & 50\% & 70\% \\
-      \hline
-      1 & 99.8\% & 91.16\% & 53\% \\
-      2 & 99.8\% & 93.96\% & 83.22\% \\
-      3 & 99.8\% & 98.54\% & 94.86\% \\
-      4 & 99.8\% & 99.7\% & 98.7\% \\
-      \hline
-    \end{tabular}
+    \resizebox{70mm}{12mm}{
+      \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{Windows Size} & \multicolumn{3}{|c|}{\textbf{Offline Ratio}} \\
+        \cline{2-4}
+                              & 30\% & 50\% & 70\% \\
+        \hline
+        1 & 99.8\% & 91.16\% & 53\% \\
+        2 & 99.8\% & 93.96\% & 83.22\% \\
+        3 & 99.8\% & 98.54\% & 94.86\% \\
+        4 & 99.8\% & 99.7\% & 98.7\% \\
+        \hline
+      \end{tabular}
+    }
     \label{tabDeHCP}
   \end{center}
 \end{table}
@@ -381,13 +383,15 @@ SDeHCP request times 128.
 \begin{table}[htbp]
   \caption{SDeHCP experiment result.}
   \begin{center}
-    \begin{tabular}{|c|c|c|c|c|}
-      \hline
-      \textbf{Request times} & 32 & 64 & 128 & 256 \\
-      \hline
-      \textbf{Accuracy} & 96.34\% & 97.93\% & 98.97\% & 99.49\% \\
-      \hline
-    \end{tabular}
+    \resizebox{70mm}{5mm}{
+      \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        \textbf{Request times} & 32 & 64 & 128 & 256 \\
+        \hline
+        \textbf{Accuracy} & 96.34\% & 97.93\% & 98.97\% & 99.49\% \\
+        \hline
+      \end{tabular}
+    }
     \label{tabSDeHCP}
   \end{center}
 \end{table}
@@ -406,25 +410,27 @@ configuration of a 24-bit address pool if required. Request and
 discard 1000 addresses before testing. Test results are shown in Table
 \ref{tabDHCPv6Server}.
 
-\begin{table*}[b]
+\begin{table}[htbp]
   \caption{Mainstream DHCPv6 implementations test results.}
   \begin{center}
-    \begin{tabular}{|c|c|c|c|c|c|}
-      \hline
-      & \multicolumn{5}{|c|}{\textbf{DHCPv6 Implementations}} \\
-      \cline{2-6}
-      & TP-Link & Cisco & Openwrt & Windows & ISC \\
-      \hline
-      \textbf{Relay Support} & No & Yes & Yes & Yes & Yes \\
-      \textbf{Address Allocation Strategy} & Continuous & Random & Random & Random & Random \\
-      \textbf{Response Rebind Standardly} & No & No & No & No & Yes \\
-      \textbf{Default Pool Size} & N/A & N/A & 8 & 64 & N/A \\
-      \textbf{Accuracy} & 100\% & 99.2\% & 96.9\% & 99.1\% & 100\% \\
-      \hline
-    \end{tabular}
+    \resizebox{93mm}{13mm}{
+      \begin{tabular}{|c|c|c|c|c|c|}
+        \hline
+        & \multicolumn{5}{|c|}{\textbf{DHCPv6 Implementations}} \\
+        \cline{2-6}
+        & TP-Link & Cisco & Openwrt & Windows & ISC \\
+        \hline
+        \textbf{Relay Support} & No & Yes & Yes & Yes & Yes \\
+        \textbf{Address Allocation Strategy} & Continuous & Random & Random & Random & Random \\
+        \textbf{Response Rebind Standardly} & No & No & No & No & Yes \\
+        \textbf{Default Pool Size} & N/A & N/A & 8 & 64 & N/A \\
+        \textbf{Accuracy} & 100\% & 99.2\% & 96.9\% & 99.1\% & 100\% \\
+        \hline
+      \end{tabular}
+    }
     \label{tabDHCPv6Server}
   \end{center}
-\end{table*}
+\end{table}
 
 Based on our results, we believe the Bisers solution is accurate for
 these DHCPv6 implementations. TP-Link routers are significantly
